@@ -7,17 +7,26 @@ export default function DashboardAptitud() {
   const [estudianteSeleccionado, setEstudianteSeleccionado] = useState(null);
 
   useEffect(() => {
-    const socket = new WebSocket('ws://localhost:8000/ws/dashboard');
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'wss://totem-backend-g6yh.onrender.com/ws/dashboard';
+    const socket = new WebSocket(wsUrl);
+
+    socket.onopen = () => {
+      console.log('Conectado al WebSocket de Render:', wsUrl);
+    };
+
+    socket.onerror = (error) => {
+      console.error('Error en WebSocket:', error);
+    };
 
     socket.onmessage = (event) => {
       const nuevoEstudiante = JSON.parse(event.data);
-      const estudianteConEstado = { 
-        ...nuevoEstudiante, 
+      const estudianteConEstado = {
+        ...nuevoEstudiante,
         idUnico: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-        estado: 'pendiente' 
+        estado: 'pendiente'
       };
       setColaEstudiantes((prevCola) => [estudianteConEstado, ...prevCola]);
-      setEstudianteSeleccionado((prev) => prev ? prev : estudianteConEstado);
+      setEstudianteSeleccionado((prev) => (prev ? prev : estudianteConEstado));
     };
 
     return () => socket.close();
