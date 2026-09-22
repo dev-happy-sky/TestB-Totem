@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import List
 import json
 import datetime
-
+import os
 # --- IMPORTACIONES DE BASE DE DATOS ---
 from sqlalchemy import create_engine, Column, Integer, String, JSON, DateTime
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
@@ -13,8 +13,10 @@ app = FastAPI(title="API Tótem de Aptitud Física")
 
 # --- 1. CONFIGURACIÓN DE POSTGRESQL ---
 # REEMPLAZA 'tu_usuario' y 'tu_contraseña' por las credenciales de tu PostgreSQL local
-DATABASE_URL = "postgresql://postgres:admin@localhost:5432/totem_db"
-
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://postgres:admin@localhost:5432/totem_db"
+)
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
