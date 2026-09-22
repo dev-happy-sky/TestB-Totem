@@ -37,6 +37,19 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "4731f377-811f-4038-b587-723ba0cdac5b"
+      }
+    },
+    "owner": "happy_sky",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/4731f377-811f-4038-b587-723ba0cdac5b"
     }
   }
 }

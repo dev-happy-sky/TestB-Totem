@@ -55,8 +55,8 @@ export default function App() {
   const avanzar = () => { if (pasoActual < totalPasos) setPasoActual(pasoActual + 1); };
   const retroceder = () => { if (pasoActual > 1) setPasoActual(pasoActual - 1); };
 
-  // Función para finalizar y reiniciar el Tótem
-const registrarIngreso = async () => {
+  // Función blindada para enviar datos a Render
+  const registrarIngreso = async () => {
     console.log("=== INICIANDO REGISTRO ===");
     const payload = {
       estudiante: formData,
@@ -68,33 +68,40 @@ const registrarIngreso = async () => {
     console.log("Payload enviado:", JSON.stringify(payload, null, 2));
 
     try {
-      // Reemplaza por la URL de producción:
       const response = await fetch('https://totem-backend-g6yh.onrender.com/api/evaluaciones', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
         body: JSON.stringify(payload),
       });
 
-      console.log("Código de estado HTTP recibido:", response.status);
-      const data = await response.json();
-      console.log("Cuerpo de la respuesta del servidor:", data);
+      console.log("Código HTTP recibido:", response.status);
+      const textResponse = await response.text();
+      console.log("Respuesta cruda del backend:", textResponse);
+
+      let data;
+      try {
+        data = JSON.parse(textResponse);
+      } catch (parseError) {
+        throw new Error(`El servidor respondió texto no JSON (${response.status}): ${textResponse.slice(0, 100)}`);
+      }
 
       if (response.ok) {
         Alert.alert("¡Éxito!", "Tus datos han sido enviados al profesor.");
         setPasoActual(1);
       } else {
-        Alert.alert("Error del servidor", `Código ${response.status}: ${JSON.stringify(data)}`);
+        const errorDetail = typeof data?.detail === 'string' ? data.detail : JSON.stringify(data);
+        Alert.alert("Error del servidor", `Código ${response.status}: ${errorDetail}`);
       }
-    } catch (error) {
-      console.error("Fallo de red en fetch:", error);
-      const mensajeError = error instanceof Error ? error.message : "No se pudo comunicar con el servidor central.";
-      Alert.alert("Error de conexión", mensajeError);
+    } catch (error: any) {
+      console.error("Fallo en fetch:", error);
+      Alert.alert("Error de conexión", error?.message || "No se pudo comunicar con el servidor central.");
     }
   };
-  // --- FUNCIONES DE RENDERIZADO ---
 
+  // --- FUNCIONES DE RENDERIZADO ---
   const renderPaso1 = () => (
     <View style={styles.stepContainer}>
       <Text style={styles.stepSubtitle}>PASO 1 - REGISTRO</Text>
@@ -112,24 +119,23 @@ const registrarIngreso = async () => {
   );
 
   const renderPaso2 = () => {
-    // Función que devuelve rojo si el valor está fuera del rango médico estándar
     const evaluarColor = (tipo: string, valor1: string | number, valor2: string | number = 0) => {
       const v1 = parseFloat(valor1.toString());
       const v2 = parseFloat(valor2.toString());
       let esAnormal = false;
 
       switch(tipo) {
-        case 'presion': // Normal: Sys 90-129 y Dia 60-84
+        case 'presion':
           esAnormal = v1 >= 130 || v1 < 90 || v2 >= 85 || v2 < 60;
           break;
-        case 'fc': // Normal: 60 - 100 lpm
+        case 'fc':
           esAnormal = v1 > 100 || v1 < 60;
           break;
-        case 'imc': // Normal: 18.5 - 24.9
+        case 'imc':
           esAnormal = v1 >= 25.0 || v1 < 18.5;
           break;
       }
-      return esAnormal ? '#ef4444' : '#0f172a'; // Rojo si es anormal, gris oscuro si es normal
+      return esAnormal ? '#ef4444' : '#0f172a';
     };
 
     return (
@@ -139,7 +145,6 @@ const registrarIngreso = async () => {
         <Text style={styles.stepDescription}>Los sensores del tótem se conectan por Bluetooth. Sigue las indicaciones y presiona medir.</Text>
         
         <View style={styles.grid}>
-          {/* Tensiómetro */}
           <View style={styles.sensorCard}>
             <Text style={styles.sensorTitle}>Tensiómetro</Text>
             <Text style={styles.label}>PRESIÓN</Text>
@@ -148,7 +153,6 @@ const registrarIngreso = async () => {
             </Text>
           </View>
           
-          {/* Banda de pecho */}
           <View style={styles.sensorCard}>
             <Text style={styles.sensorTitle}>Banda de pecho</Text>
             <View style={styles.row}>
@@ -160,13 +164,11 @@ const registrarIngreso = async () => {
               </View>
               <View>
                 <Text style={styles.label}>FC RECUP.</Text>
-                {/* La recuperación alta no siempre es mala per se en este contexto, la dejamos estática o puedes agregarle su propia regla */}
                 <Text style={styles.metric}>{mediciones.fcRecup} <Text style={styles.unit}>lpm</Text></Text>
               </View>
             </View>
           </View>
 
-          {/* Balanza */}
           <View style={styles.sensorCard}>
             <Text style={styles.sensorTitle}>Balanza</Text>
             <View style={styles.row}>
@@ -187,7 +189,6 @@ const registrarIngreso = async () => {
             </View>
           </View>
 
-          {/* Prueba de esfuerzo */}
           <View style={styles.sensorCard}>
             <Text style={styles.sensorTitle}>Prueba esfuerzo</Text>
             <Text style={styles.label}>VO₂ MÁX</Text>
@@ -247,9 +248,7 @@ const registrarIngreso = async () => {
   };
 
   const renderPaso5 = () => {
-    // Extraemos el primer nombre para hacerlo más cercano
     const primerNombre = formData.nombre.split(' ')[0] || 'Estudiante';
-    
     return (
       <View style={styles.stepContainer}>
         <Text style={styles.stepSubtitle}>CASI LISTO</Text>
@@ -286,7 +285,6 @@ const registrarIngreso = async () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* HEADER */}
       <View style={styles.header}>
         <View style={styles.progressContainer}>
           {nombresPasos.map((nombre, index) => (
@@ -298,7 +296,6 @@ const registrarIngreso = async () => {
         </View>
       </View>
 
-      {/* BODY */}
       <ScrollView style={styles.content} keyboardShouldPersistTaps="handled">
         {pasoActual === 1 && renderPaso1()}
         {pasoActual === 2 && renderPaso2()}
@@ -307,9 +304,7 @@ const registrarIngreso = async () => {
         {pasoActual === 5 && renderPaso5()}
       </ScrollView>
 
-      {/* FOOTER */}
       <View style={styles.footer}>
-        {/* Mostramos el botón "Atrás" solo en los pasos 2, 3 y 4 */}
         {pasoActual > 1 && pasoActual < totalPasos && (
           <TouchableOpacity onPress={retroceder} style={styles.btnBack}>
             <Text style={styles.btnBackText}>← Atrás</Text>
@@ -330,7 +325,6 @@ const registrarIngreso = async () => {
   );
 }
 
-// --- ESTILOS ---
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc' },
   header: { padding: 20, paddingTop: 40, borderBottomWidth: 1, borderBottomColor: '#e2e8f0', backgroundColor: '#fff' },
@@ -384,7 +378,6 @@ const styles = StyleSheet.create({
   checkboxText: { flex: 1, fontSize: 14, color: '#64748b' },
   checkboxTextActive: { color: '#1e293b' },
   
-  /* Nuevos estilos Paso 5 (Tarjeta de Resumen) */
   summaryCard: { backgroundColor: '#fff7ed', padding: 25, borderRadius: 16, marginTop: 10 },
   summaryHeader: { flexDirection: 'row', marginBottom: 20 },
   summaryIcon: { backgroundColor: '#ea580c', width: 45, height: 45, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
@@ -406,6 +399,6 @@ const styles = StyleSheet.create({
   btnBackText: { color: '#64748b', fontWeight: 'bold', fontSize: 16 },
   btnNext: { backgroundColor: '#0f172a', paddingVertical: 15, paddingHorizontal: 30, borderRadius: 30 },
   btnNextText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  btnFinal: { width: '100%', backgroundColor: '#ea580c', paddingVertical: 18, borderRadius: 16, alignItems: 'center' }, // Botón final expandido y rediseñado
+  btnFinal: { width: '100%', backgroundColor: '#ea580c', paddingVertical: 18, borderRadius: 16, alignItems: 'center' },
   btnFinalText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
 });

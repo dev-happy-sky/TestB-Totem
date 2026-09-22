@@ -7,29 +7,37 @@ export default function DashboardAptitud() {
   const [estudianteSeleccionado, setEstudianteSeleccionado] = useState(null);
 
   useEffect(() => {
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'wss://totem-backend-g6yh.onrender.com/ws/dashboard';
+    // URL explícita a Render con el endpoint registrado en FastAPI
+    const wsUrl = 'wss://totem-backend-g6yh.onrender.com/ws/dashboard';
     const socket = new WebSocket(wsUrl);
 
     socket.onopen = () => {
-      console.log('Conectado al WebSocket de Render:', wsUrl);
+      console.log('✓ Conectado exitosamente al WebSocket de Render:', wsUrl);
     };
 
     socket.onerror = (error) => {
-      console.error('Error en WebSocket:', error);
+      console.error('✗ Error en WebSocket:', error);
     };
 
     socket.onmessage = (event) => {
-      const nuevoEstudiante = JSON.parse(event.data);
-      const estudianteConEstado = {
-        ...nuevoEstudiante,
-        idUnico: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-        estado: 'pendiente'
-      };
-      setColaEstudiantes((prevCola) => [estudianteConEstado, ...prevCola]);
-      setEstudianteSeleccionado((prev) => (prev ? prev : estudianteConEstado));
+      try {
+        console.log('Mensaje recibido vía WebSocket:', event.data);
+        const nuevoEstudiante = JSON.parse(event.data);
+        const estudianteConEstado = {
+          ...nuevoEstudiante,
+          idUnico: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+          estado: 'pendiente'
+        };
+        setColaEstudiantes((prevCola) => [estudianteConEstado, ...prevCola]);
+        setEstudianteSeleccionado((prev) => (prev ? prev : estudianteConEstado));
+      } catch (err) {
+        console.warn('El mensaje recibido no es un JSON válido:', event.data);
+      }
     };
 
-    return () => socket.close();
+    return () => {
+      socket.close();
+    };
   }, []);
 
   const handleValidarEstudiante = (idUnicoEstudiante, nivelConfirmado) => {
@@ -60,16 +68,14 @@ export default function DashboardAptitud() {
     return esAnormal ? 'text-red-600' : 'text-slate-800';
   };
 
-  // --- NUEVA LÓGICA DE ORDENAMIENTO (Gravedad A1 -> A4) ---
+  // --- LÓGICA DE ORDENAMIENTO (Gravedad A1 -> A4) ---
   const obtenerPrioridad = (estudiante) => {
     const nivel = estudiante.nivelFinal || estudiante.iaSugerida;
-    // Asignamos un número: 1 es más urgente (arriba), 4 es menos urgente (abajo)
     const prioridades = { 'A1': 1, 'A2': 2, 'A3': 3, 'A4': 4 };
     return prioridades[nivel] || 5; 
   };
 
   const colaOrdenada = [...colaEstudiantes].sort((a, b) => {
-    // 1. Primero separamos por estado (Pendientes arriba, Validados abajo)
     const estadoA = a.estado === 'validado' ? 1 : 0;
     const estadoB = b.estado === 'validado' ? 1 : 0;
     
@@ -77,10 +83,8 @@ export default function DashboardAptitud() {
       return estadoA - estadoB;
     }
     
-    // 2. Si tienen el mismo estado, los ordenamos por gravedad (1 al 5)
     return obtenerPrioridad(a) - obtenerPrioridad(b);
   });
-  // --------------------------------------------------------
 
   const kpiPendientes = colaEstudiantes.filter(e => e.estado === 'pendiente').length;
   const kpiValidados = colaEstudiantes.filter(e => e.estado === 'validado').length;
