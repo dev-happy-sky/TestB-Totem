@@ -1,0 +1,20 @@
+@"
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+
+# Node / Next / Expo
+node_modules/
+.next/
+.expo/
+dist/
+build/
+
+# Variables de entorno y credenciales locales
+.env
+.env.local
+.env.*.local
+*.log
+"@ | Out-File -FilePath .gitignore -Encoding utf8
