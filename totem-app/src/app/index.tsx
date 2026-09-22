@@ -68,10 +68,13 @@ const registrarIngreso = async () => {
     console.log("Payload enviado:", JSON.stringify(payload, null, 2));
 
     try {
-      const response = await fetch('http://192.168.1.11:8000/api/evaluaciones', {
+      // Reemplaza por la URL de producción:
+      const response = await fetch('https://totem-backend-g6yh.onrender.com/api/evaluaciones', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
       });
 
       console.log("Código de estado HTTP recibido:", response.status);
