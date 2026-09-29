@@ -6,18 +6,26 @@ export default function DashboardAptitud() {
   const [colaEstudiantes, setColaEstudiantes] = useState([]);
   const [estudianteSeleccionado, setEstudianteSeleccionado] = useState(null);
 
+  // URL base de tu backend en Render
+  const BACKEND_URL = 'https://totem-backend-g6yh.onrender.com/ws/dashboard';
+  const WS_URL = 'wss://totem-backend-g6yh.onrender.com/ws/dashboard';
+
   useEffect(() => {
-    // URL explícita a Render con el endpoint registrado en FastAPI
-    const wsUrl = 'wss://totem-backend-g6yh.onrender.com/ws/dashboard';
-    const socket = new WebSocket(wsUrl);
+    // 1. RECUPERAR HISTORIAL AL RECARGAR LA PÁGINA (Faltaba esto)
+    fetch(`${BACKEND_URL}/api/evaluaciones`)
+      .then(res => res.json())
+      .then(data => {
+        setColaEstudiantes(data);
+        if (data.length > 0) setEstudianteSeleccionado(data[0]);
+        console.log('✓ Historial cargado desde Render');
+      })
+      .catch(err => console.error("✗ Error cargando base de datos:", err));
 
-    socket.onopen = () => {
-      console.log('✓ Conectado exitosamente al WebSocket de Render:', wsUrl);
-    };
+    // 2. CONEXIÓN WEBSOCKET PARA TIEMPO REAL
+    const socket = new WebSocket(WS_URL);
 
-    socket.onerror = (error) => {
-      console.error('✗ Error en WebSocket:', error);
-    };
+    socket.onopen = () => console.log('✓ Conectado exitosamente al WebSocket de Render');
+    socket.onerror = (error) => console.error('✗ Error en WebSocket:', error);
 
     socket.onmessage = (event) => {
       try {
@@ -35,12 +43,12 @@ export default function DashboardAptitud() {
       }
     };
 
-    return () => {
-      socket.close();
-    };
+    return () => socket.close();
   }, []);
 
-  const handleValidarEstudiante = (idUnicoEstudiante, nivelConfirmado) => {
+  // 3. GUARDAR VALIDACIÓN EN LA BASE DE DATOS (Faltaba el fetch PUT)
+  const handleValidarEstudiante = async (idUnicoEstudiante, nivelConfirmado) => {
+    // Actualizamos la UI inmediatamente (Optimistic Update)
     setColaEstudiantes((prev) => 
       prev.map((est) => 
         est.idUnico === idUnicoEstudiante 
@@ -53,6 +61,21 @@ export default function DashboardAptitud() {
         ? { ...prev, estado: 'validado', nivelFinal: nivelConfirmado } 
         : prev
     );
+
+    // Enviamos el cambio a Render para que quede guardado permanentemente
+    const est = colaEstudiantes.find(e => e.idUnico === idUnicoEstudiante);
+    if (est && est.idBaseDatos) {
+      try {
+        await fetch(`${BACKEND_URL}/api/evaluaciones/${est.idBaseDatos}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nivel_final: nivelConfirmado })
+        });
+        console.log(`✓ Validación de ${est.nombre} guardada en BD`);
+      } catch (error) {
+        console.error("✗ Error guardando validación en BD:", error);
+      }
+    }
   };
 
   const obtenerColorMetrica = (tipo, valor1, valor2 = 0) => {
@@ -78,11 +101,7 @@ export default function DashboardAptitud() {
   const colaOrdenada = [...colaEstudiantes].sort((a, b) => {
     const estadoA = a.estado === 'validado' ? 1 : 0;
     const estadoB = b.estado === 'validado' ? 1 : 0;
-    
-    if (estadoA !== estadoB) {
-      return estadoA - estadoB;
-    }
-    
+    if (estadoA !== estadoB) return estadoA - estadoB;
     return obtenerPrioridad(a) - obtenerPrioridad(b);
   });
 
