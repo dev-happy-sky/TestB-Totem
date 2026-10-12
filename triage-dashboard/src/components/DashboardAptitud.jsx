@@ -2,18 +2,22 @@
 import React, { useState, useEffect } from 'react';
 import ValidacionAptitud from './ValidacionAptitud';
 
-export default function DashboardAptitud() {
+export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout }) {
   const [colaEstudiantes, setColaEstudiantes] = useState([]);
   const [estudianteSeleccionado, setEstudianteSeleccionado] = useState(null);
 
   // URL base de tu backend en Render
-  const BACKEND_URL = 'https://totem-backend-g6yh.onrender.com/ws/dashboard';
-  const WS_URL = 'wss://totem-backend-g6yh.onrender.com/ws/dashboard';
+  const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://totem-backend-g6yh.onrender.com';
+  const WS_URL = BACKEND_URL.replace(/^http/, 'ws') + '/ws/dashboard';
+  const authHeaders = { Authorization: `Bearer ${sesion.token}` };
 
   useEffect(() => {
     // 1. RECUPERAR HISTORIAL AL RECARGAR LA PÁGINA (Faltaba esto)
-    fetch(`${BACKEND_URL}/api/evaluaciones`)
-      .then(res => res.json())
+    fetch(`${BACKEND_URL}/api/evaluaciones`, { headers: authHeaders })
+      .then(res => {
+        if (res.status === 401) { onSesionInvalida(); throw new Error('sesión inválida'); }
+        return res.json();
+      })
       .then(data => {
         setColaEstudiantes(data);
         if (data.length > 0) setEstudianteSeleccionado(data[0]);
@@ -24,7 +28,9 @@ export default function DashboardAptitud() {
     // 2. CONEXIÓN WEBSOCKET PARA TIEMPO REAL
     const socket = new WebSocket(WS_URL);
 
-    socket.onopen = () => console.log('✓ Conectado exitosamente al WebSocket de Render');
+    // El token se envía en el primer mensaje; el servidor cierra la conexión si no es válido.
+    socket.onopen = () => socket.send(JSON.stringify({ token: sesion.token }));
+    socket.onclose = (ev) => { if (ev.code === 4401) onSesionInvalida(); };
     socket.onerror = (error) => console.error('✗ Error en WebSocket:', error);
 
     socket.onmessage = (event) => {
@@ -68,7 +74,7 @@ export default function DashboardAptitud() {
       try {
         await fetch(`${BACKEND_URL}/api/evaluaciones/${est.idBaseDatos}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeaders },
           body: JSON.stringify({ nivel_final: nivelConfirmado })
         });
         console.log(`✓ Validación de ${est.nombre} guardada en BD`);
@@ -115,6 +121,10 @@ export default function DashboardAptitud() {
 
   return (
     <div className="min-h-screen bg-slate-100 p-6 flex flex-col font-sans">
+      <div className="flex justify-end items-center gap-3 mb-3 text-xs text-slate-500">
+        <span>{sesion.usuario} · {sesion.rol}</span>
+        <button onClick={onLogout} className="font-semibold text-slate-700 underline">Cerrar sesión</button>
+      </div>
       <div className="flex gap-4 mb-6">
         {[
           { l: 'POR VALIDAR', v: kpiPendientes, c: 'text-slate-800' },
