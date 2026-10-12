@@ -1,10 +1,10 @@
 'use client';
-import DashboardAptitud from '../components/DashboardAptitud';
+import SesionDashboard from '../components/SesionDashboard';
 
 export default function Home() {
   return (
     <main>
-      <DashboardAptitud />
+      <SesionDashboard />
     </main>
   );
 }

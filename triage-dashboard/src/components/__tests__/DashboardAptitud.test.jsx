@@ -1,0 +1,116 @@
+import { render, screen, waitFor, act } from '@testing-library/react';
+import DashboardAptitud from '../DashboardAptitud';
+
+const sesion = { token: 'tok123', rol: 'encargado', usuario: 'ana' };
+
+const evaluacion = (n, extra = {}) => ({
+  idBaseDatos: `uuid-${n}`, idUnico: `db_${n}`, id: `rut-${n}`, nombre: `Socio ${n}`, carrera: 'Plan', edad: '30',
+  objetivo: 'Fuerza', iaSugerida: 'A3', alerta: null, estado: 'pendiente', nivelFinal: null, tiempoEspera: 'Registrado',
+  mediciones: { presionSys: 118, presionDia: 78, fcReposo: 70, fcRecup: 100, peso: '70.0', imc: '24.0', grasa: '20.0', vo2Max: '40.0' },
+  salud: { sintomas: [], condiciones: [] },
+  ...extra,
+});
+
+class FakeWebSocket {
+  static instancias = [];
+  constructor(url) { this.url = url; this.enviados = []; FakeWebSocket.instancias.push(this); }
+  send(m) { this.enviados.push(m); }
+  close() {}
+}
+
+let props;
+beforeEach(() => {
+  FakeWebSocket.instancias = [];
+  global.WebSocket = FakeWebSocket;
+  props = { sesion, onSesionInvalida: jest.fn(), onLogout: jest.fn() };
+  jest.spyOn(console, 'log').mockImplementation(() => {});
+  jest.spyOn(console, 'error').mockImplementation(() => {});
+});
+afterEach(() => jest.restoreAllMocks());
+
+const mockHistorial = (datos, status = 200) => {
+  global.fetch = jest.fn().mockResolvedValue({ ok: status === 200, status, json: async () => datos });
+};
+const nombresEnCola = () =>
+  [...document.querySelectorAll('.cursor-pointer span.text-sm.font-bold')].map((el) => el.textContent);
+
+test('pide el historial con el token de la sesión', async () => {
+  mockHistorial([evaluacion(1)]);
+  render(<DashboardAptitud {...props} />);
+
+  await screen.findAllByText('Socio 1');
+  const [url, opciones] = global.fetch.mock.calls[0];
+  expect(url).toMatch(/\/api\/evaluaciones$/);
+  expect(url).not.toContain('/ws/');
+  expect(opciones.headers.Authorization).toBe('Bearer tok123');
+});
+
+test('si el servidor responde 401 avisa que la sesión es inválida', async () => {
+  mockHistorial({ detail: 'Sesión inválida o expirada' }, 401);
+  render(<DashboardAptitud {...props} />);
+  await waitFor(() => expect(props.onSesionInvalida).toHaveBeenCalled());
+});
+
+test('el WebSocket envía el token en el primer mensaje, no en la URL', async () => {
+  mockHistorial([]);
+  render(<DashboardAptitud {...props} />);
+
+  const ws = FakeWebSocket.instancias[0];
+  expect(ws.url).toMatch(/^wss?:\/\/.+\/ws\/dashboard$/);
+  expect(ws.url).not.toContain('tok123');
+  act(() => ws.onopen());
+  expect(JSON.parse(ws.enviados[0])).toEqual({ token: 'tok123' });
+});
+
+test('si el WebSocket se cierra con 4401 avisa que la sesión es inválida', async () => {
+  mockHistorial([]);
+  render(<DashboardAptitud {...props} />);
+  act(() => FakeWebSocket.instancias[0].onclose({ code: 4401 }));
+  expect(props.onSesionInvalida).toHaveBeenCalled();
+});
+
+test('una evaluación nueva por WebSocket aparece en la cola', async () => {
+  mockHistorial([]);
+  render(<DashboardAptitud {...props} />);
+  await screen.findByText(/Esperando evaluaciones/);
+
+  act(() => FakeWebSocket.instancias[0].onmessage({ data: JSON.stringify(evaluacion(9)) }));
+  expect(await screen.findAllByText('Socio 9')).not.toHaveLength(0);
+});
+
+test('ordena por gravedad (A1 primero) y deja las validadas al final', async () => {
+  mockHistorial([
+    evaluacion(1, { iaSugerida: 'A3' }),
+    evaluacion(2, { iaSugerida: 'A2', alerta: 'DERIVAR' }),
+    evaluacion(3, { iaSugerida: 'A3', estado: 'validado', nivelFinal: 'A1' }),
+    evaluacion(4, { iaSugerida: 'A3', nivelFinal: null }),
+  ]);
+  render(<DashboardAptitud {...props} />);
+  await screen.findAllByText('Socio 2');
+
+  expect(nombresEnCola()).toEqual(['Socio 2', 'Socio 1', 'Socio 4', 'Socio 3']);
+});
+
+test('los KPI cuentan pendientes, validados, riesgo alto y alertas', async () => {
+  mockHistorial([
+    evaluacion(1, { iaSugerida: 'A2', alerta: 'DERIVAR' }),
+    evaluacion(2),
+    evaluacion(3, { estado: 'validado', nivelFinal: 'A1' }),
+  ]);
+  render(<DashboardAptitud {...props} />);
+  await screen.findAllByText('Socio 1');
+
+  const kpi = (etiqueta) => screen.getByText(etiqueta).nextSibling.textContent;
+  expect(kpi('POR VALIDAR')).toBe('2');
+  expect(kpi('VALIDADOS')).toBe('1');
+  expect(kpi('RIESGO ALTO (A1)')).toBe('1');
+  expect(kpi('ALERTAS PENDIENTES')).toBe('1');
+});
+
+test('cerrar sesión llama a onLogout y muestra el usuario', async () => {
+  mockHistorial([]);
+  render(<DashboardAptitud {...props} />);
+  expect(screen.getByText('ana · encargado')).toBeInTheDocument();
+  screen.getByRole('button', { name: 'Cerrar sesión' }).click();
+  expect(props.onLogout).toHaveBeenCalled();
+});

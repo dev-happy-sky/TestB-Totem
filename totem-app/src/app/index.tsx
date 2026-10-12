@@ -16,6 +16,9 @@ export default function App() {
     carrera: 'Informatica'
   });
 
+  // --- CONSENTIMIENTO (R.183) ---
+  const [consentimiento, setConsentimiento] = useState(false);
+
   // --- ESTADO PASO 2 ---
   const [mediciones, setMediciones] = useState({
     presionSys: 117, presionDia: 81, fcReposo: 79, fcRecup: 101, peso: '90.3', imc: '27.3', grasa: '18.3', vo2Max: '44.6'
@@ -52,13 +55,24 @@ export default function App() {
     setCondicionesSalud(prev => prev.includes(condicion) ? prev.filter(c => c !== condicion) : [...prev, condicion]);
   };
 
-  const avanzar = () => { if (pasoActual < totalPasos) setPasoActual(pasoActual + 1); };
+  const avanzar = () => {
+    if (pasoActual === 1 && !consentimiento) {
+      Alert.alert("Consentimiento requerido", "Para continuar debes aceptar el uso de tus datos de salud.");
+      return;
+    }
+    if (pasoActual < totalPasos) setPasoActual(pasoActual + 1);
+  };
   const retroceder = () => { if (pasoActual > 1) setPasoActual(pasoActual - 1); };
 
   // Función blindada para enviar datos a Render
   const registrarIngreso = async () => {
     console.log("=== INICIANDO REGISTRO ===");
+    if (!consentimiento) {
+      Alert.alert("Consentimiento requerido", "Debes aceptar el uso de tus datos de salud para registrar tu ingreso.");
+      return;
+    }
     const payload = {
+      consentimiento,
       estudiante: formData,
       mediciones: mediciones,
       entrenamiento: { objetivo, experiencia, duracion },
@@ -72,7 +86,8 @@ export default function App() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          'X-Totem-Key': process.env.EXPO_PUBLIC_TOTEM_KEY ?? ''
         },
         body: JSON.stringify(payload),
       });
@@ -90,6 +105,7 @@ export default function App() {
 
       if (response.ok) {
         Alert.alert("¡Éxito!", "Tus datos han sido enviados al profesor.");
+        setConsentimiento(false);
         setPasoActual(1);
       } else {
         const errorDetail = typeof data?.detail === 'string' ? data.detail : JSON.stringify(data);
@@ -115,6 +131,10 @@ export default function App() {
         <View style={[styles.inputGroup, { width: 100 }]}><Text style={styles.label}>EDAD</Text><TextInput style={styles.input} value={formData.edad} onChangeText={(t) => setFormData({ ...formData, edad: t })} keyboardType="numeric" /></View>
       </View>
       <View style={styles.inputGroup}><Text style={styles.label}>CARRERA</Text><TextInput style={styles.input} value={formData.carrera} onChangeText={(t) => setFormData({ ...formData, carrera: t })} /></View>
+      <TouchableOpacity style={[styles.checkboxCard, { width: "100%" }]} onPress={() => setConsentimiento(!consentimiento)} accessibilityRole="checkbox" accessibilityState={{ checked: consentimiento }}>
+        <View style={[styles.checkboxIcon, consentimiento && styles.checkboxIconActive]}>{consentimiento && <Text style={styles.checkboxCheck}>✓</Text>}</View>
+        <Text style={styles.checkboxText}>Autorizo el registro y uso de mis datos personales y de salud para evaluar mi aptitud física. Esta herramienta es de apoyo y no reemplaza el criterio de un profesional de la salud.</Text>
+      </TouchableOpacity>
     </View>
   );
 
