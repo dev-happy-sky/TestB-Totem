@@ -4,7 +4,6 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import List, Optional
 import asyncio
 import datetime
-import hashlib
 import hmac
 import json
 import logging
@@ -19,6 +18,7 @@ import jwt
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, Session
 
+from credenciales import hash_password, verify_password
 from migraciones import agregar_columnas_faltantes, consolidar_identidad
 from models import AuditLog, Base, PersonalGimnasio, SesionTotem
 from persistencia import (
@@ -88,21 +88,6 @@ if not TOTEM_API_KEY:
 
 ROLES_DASHBOARD = ("admin", "encargado")
 bearer = HTTPBearer(auto_error=False)
-
-
-def hash_password(password: str, salt: Optional[bytes] = None) -> str:
-    salt = salt or secrets.token_bytes(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 200_000)
-    return f"{salt.hex()}${digest.hex()}"
-
-
-def verify_password(password: str, almacenado: str) -> bool:
-    try:
-        salt_hex, digest_hex = almacenado.split("$")
-        esperado = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt_hex), 200_000)
-        return hmac.compare_digest(esperado.hex(), digest_hex)
-    except ValueError:
-        return False
 
 
 def registrar_acceso(db: Session, accion: str, usuario=None, rol=None, recurso=None, ip=None,

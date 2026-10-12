@@ -40,7 +40,8 @@ def test_datos_quedan_mapeados_al_modelo(client, payload, totem_headers):
         sesion = db.query(SesionTotem).one()
         assert sesion.consentimiento is True and sesion.consentimiento_en is not None
         inf = db.query(InferenciaIA).one()
-        assert inf.version_modelo == "reglas-v1" and inf.categoria_aptitud == "A3" and inf.alerta is None
+        assert inf.version_modelo == "reglas-v2" and inf.categoria_aptitud == "A3" and inf.alerta is None
+        assert inf.confianza_modelo == 1.0 and inf.requiere_revision is False
     finally:
         db.close()
 

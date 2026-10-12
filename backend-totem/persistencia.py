@@ -11,18 +11,17 @@ from models import (
     SesionTotem, Socio, Totem,
 )
 from identidad import calcular_edad, enmascarar_matricula, normalizar_matricula, normalizar_nombre, partir_nombre
+from inferencia import evaluar_entrada
+from motor_aptitud import Entrada, Resultado, cargar_configuracion, rutina_para
 from schemas import EvaluacionPayload, SocioActualizacion, SocioRegistro
 
-VERSION_MODELO = "reglas-v1"
 TOTEM_SERIAL_DEFAULT = os.getenv("TOTEM_SERIAL_DEFAULT", "TOTEM-001")
 VIGENCIA_HORAS = int(os.getenv("VIGENCIA_HORAS", "24"))  # R.7: una evaluación más reciente que esto es "vigente"
 MAX_HORAS_INICIO = 24  # un inicio informado por el tótem más antiguo que esto se ignora
 CONDICIONES_CRONICAS = {"Asma", "Hipertensión", "Diabetes", "Problema cardíaco"}
 
-# Alerta crítica (R.125): síntomas o condiciones que desaconsejan entrenar sin evaluación médica.
-# No incluye umbrales de signos vitales: los define quien valide el modelo (R.222).
-SINTOMAS_CRITICOS = {"Dolor de pecho al esforzarte", "Mareos o pérdida de equilibrio"}
-CONDICIONES_CRITICAS = {"Problema cardíaco"}
+# Reglas de aptitud (categorías, rangos, alertas): ver reglas_aptitud.json y motor_aptitud.py
+CONFIG = cargar_configuracion()
 
 
 class SesionCerrada(Exception):
@@ -44,12 +43,6 @@ class PosibleDuplicado(Exception):
 class SinAlerta(Exception):
     """La evaluación no tiene una alerta que revisar."""
 
-RUTINAS = {
-    "A2": "Entrenamiento con precaución; derivar a evaluación profesional antes de intensidad alta",
-    "A3": "Apto para entrenar con normalidad",
-}
-
-
 def _ahora():
     return datetime.datetime.now(datetime.timezone.utc)
 
@@ -68,22 +61,19 @@ def _a_int(valor) -> Optional[int]:
         return None
 
 
-def evaluar_reglas(payload: EvaluacionPayload):
-    """Regla provisional (mientras no exista el modelo de IA).
+def construir_entrada(payload: EvaluacionPayload) -> Entrada:
+    """Prepara los datos de la evaluación para el motor (R.92): lo que no se midió queda en None (R.93)."""
+    m, salud = payload.mediciones, payload.salud
+    return Entrada(
+        sintomas=tuple(salud.sintomas), condiciones=tuple(salud.condiciones), lesiones_previas=salud.lesionesPrevias,
+        presion_sistolica=m.presionSys, presion_diastolica=m.presionDia, fc_reposo=m.fcReposo,
+        fc_recuperacion=m.fcRecup, imc=_a_float(m.imc),
+    )
 
-    Devuelve (categoria, alerta, rutina, nivel_alerta, factores). Solo considera los síntomas declarados y las
-    condiciones críticas; no usa signos vitales ni otras condiciones.
-    """
-    sintomas, condiciones = payload.salud.sintomas, payload.salud.condiciones
-    criticos = [s for s in sintomas if s in SINTOMAS_CRITICOS] + [c for c in condiciones if c in CONDICIONES_CRITICAS]
-    tiene_riesgos = bool(sintomas) or bool(criticos)
 
-    categoria = "A2" if tiene_riesgos else "A3"
-    alerta = "DERIVAR" if tiene_riesgos else None
-    nivel_alerta = "critica" if criticos else ("riesgo" if tiene_riesgos else None)
-    factores = [f"Síntoma declarado: {s}" for s in sintomas]
-    factores += [f"Condición crítica: {c}" for c in condiciones if c in CONDICIONES_CRITICAS]
-    return categoria, alerta, RUTINAS[categoria], nivel_alerta, factores
+def evaluar_reglas(payload: EvaluacionPayload) -> Resultado:
+    """Decide categoría, confianza, alerta y factores con el motor de reglas (y el modelo de ML si está activo)."""
+    return evaluar_entrada(construir_entrada(payload), CONFIG)
 
 
 def _aware(fecha):
@@ -255,13 +245,17 @@ def guardar_evaluacion(db: Session, payload: EvaluacionPayload, ip: Optional[str
         sintomas=salud.sintomas, condiciones=salud.condiciones,
     ))
 
-    categoria, alerta, rutina, nivel_alerta, factores = evaluar_reglas(payload)
+    resultado = evaluar_reglas(payload)
     db.add(InferenciaIA(
-        sesion_id=sesion.id, rutina_sugerida=rutina, version_modelo=VERSION_MODELO, generado_en=fecha,
+        sesion_id=sesion.id, rutina_sugerida=resultado.rutina, version_modelo=resultado.version, generado_en=fecha,
+        confianza_modelo=resultado.confianza,
         features_entrada={"mediciones": m.model_dump(), "salud": salud.model_dump(), "entrenamiento": ent.model_dump(),
-                          "factores": factores},
+                          "factores": list(resultado.factores), "intensidad": resultado.intensidad},
+        reglas_aplicadas=[{"id": h.id, "descripcion": h.descripcion, "severidad": h.severidad, "valor": h.valor}
+                          for h in resultado.hallazgos],
+        requiere_revision=resultado.requiere_revision, motivo_revision=resultado.motivo_revision,
         latencia_ms=round((time.perf_counter() - inicio) * 1000, 2),
-        categoria_aptitud=categoria, alerta=alerta, alerta_nivel=nivel_alerta,
+        categoria_aptitud=resultado.categoria, alerta=resultado.alerta, alerta_nivel=resultado.nivel_alerta,
     ))
     db.commit()
     return cargar_sesion(db, sesion.id)
@@ -301,7 +295,7 @@ def validar_sesion(db: Session, sesion: SesionTotem, nivel_final: str, personal_
         decision_personal=decision, observaciones=(observaciones or "").strip() or None,
         motivo_derivacion=(motivo or "").strip() if derivar else None,
         rutina_final=("Derivado a evaluación médica externa" if derivar
-                      else RUTINAS.get(nivel_final, f"Categoría de aptitud {nivel_final}")),
+                      else rutina_para(nivel_final, CONFIG)),
         asignado_en=ahora,
     )
     db.add(res)
@@ -370,6 +364,15 @@ def serializar_sesion(sesion: SesionTotem) -> dict:
         "alertaNivel": (inf.alerta_nivel or ("riesgo" if inf.alerta else None)) if inf else None,
         "alertaRevisada": bool(inf and inf.alerta_revisada_en),
         "factores": ((inf.features_entrada or {}).get("factores") or []) if inf else [],
+        "confianza": inf.confianza_modelo if inf else None,
+        "versionModelo": inf.version_modelo if inf else None,
+        "requiereRevision": bool(inf and inf.requiere_revision),
+        "motivoRevision": inf.motivo_revision if inf else None,
+        "reglasAplicadas": (inf.reglas_aplicadas or []) if inf else [],
+        "intensidad": (inf.features_entrada or {}).get("intensidad") if inf else None,
+        "rutinaSugerida": inf.rutina_sugerida if inf else None,
+        "latenciaMs": inf.latencia_ms if inf else None,
+        "decisionPersonal": res.decision_personal if res else None,
         "mediciones": {
             "presionSys": int(med.presion_sistolica) if med and med.presion_sistolica is not None else None,
             "presionDia": int(med.presion_diastolica) if med and med.presion_diastolica is not None else None,
