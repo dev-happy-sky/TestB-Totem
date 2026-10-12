@@ -3,6 +3,7 @@
 El gimnasio es universitario: el identificador es la matrícula. El formato exacto se puede ajustar con la
 variable de entorno MATRICULA_REGEX (se aplica sobre la matrícula ya normalizada).
 """
+import datetime
 import os
 import re
 import unicodedata
@@ -37,3 +38,23 @@ def partir_nombre(nombre_completo: str):
     """'Ana Pérez Soto' -> ('Ana', 'Pérez Soto')."""
     partes = (nombre_completo or "").strip().split(" ", 1)
     return partes[0], (partes[1].strip() if len(partes) > 1 else "")
+
+
+EDAD_MAXIMA = 120
+
+
+def calcular_edad(fecha_nacimiento: datetime.date, hoy: datetime.date) -> int:
+    """Años cumplidos a la fecha `hoy`."""
+    return hoy.year - fecha_nacimiento.year - ((hoy.month, hoy.day) < (fecha_nacimiento.month, fecha_nacimiento.day))
+
+
+def fecha_nacimiento_valida(fecha_nacimiento: datetime.date, hoy: datetime.date) -> bool:
+    """No puede ser futura ni de alguien de más de 120 años."""
+    return fecha_nacimiento <= hoy and calcular_edad(fecha_nacimiento, hoy) <= EDAD_MAXIMA
+
+
+PATRON_TELEFONO = re.compile(r"^\+?[\d\s\-()]{6,29}$")
+
+
+def telefono_valido(telefono) -> bool:
+    return bool(PATRON_TELEFONO.match((telefono or "").strip()))

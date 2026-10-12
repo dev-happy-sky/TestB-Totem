@@ -44,3 +44,19 @@ def agregar_columnas_faltantes(engine: Engine) -> list:
     if agregadas:
         logger.warning("Columnas agregadas: %s", ", ".join(agregadas))
     return agregadas
+
+
+def consolidar_identidad(engine: Engine) -> int:
+    """Bases creadas con la versión intermedia (columnas `matricula` y `carrera`): la matrícula pasa a `rut` y la
+    carrera a `plan_membresia`. No borra las columnas antiguas. Idempotente."""
+    insp = inspect(engine)
+    if "socios" not in insp.get_table_names():
+        return 0
+    columnas = {c["name"] for c in insp.get_columns("socios")}
+    movidos = 0
+    with engine.begin() as conn:
+        if "matricula" in columnas:
+            movidos = conn.execute(text("UPDATE socios SET rut = matricula WHERE rut IS NULL AND matricula IS NOT NULL")).rowcount
+        if "carrera" in columnas:
+            conn.execute(text("UPDATE socios SET plan_membresia = carrera WHERE plan_membresia IS NULL AND carrera IS NOT NULL"))
+    return movidos

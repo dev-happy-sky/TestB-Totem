@@ -19,16 +19,17 @@ import jwt
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, Session
 
-from migraciones import agregar_columnas_faltantes
+from migraciones import agregar_columnas_faltantes, consolidar_identidad
 from models import AuditLog, Base, PersonalGimnasio, SesionTotem
 from persistencia import (
     PosibleDuplicado, SesionCerrada, SinAlerta, SocioExistente, actualizar_socio, buscar_socio, cargar_sesion,
     guardar_evaluacion, listar_historial_socio, listar_sesiones, registrar_auditoria, registrar_socio,
-    rellenar_identidad, resumen_identificacion, revisar_alerta, serializar_sesion, validar_sesion,
+    resumen_identificacion, revisar_alerta, serializar_sesion, validar_mediciones, validar_sesion,
 )
 from identidad import normalizar_matricula, matricula_valida, MENSAJE_MATRICULA
 from schemas import (
     EvaluacionPayload, IdentificarPayload, LoginPayload, SocioActualizacion, SocioRegistro, ValidacionPayload,
+    ValidarMedicionesPayload,
 )
 
 app = FastAPI(title="API Tótem de Aptitud Física")
@@ -170,15 +171,7 @@ def migrar_evaluaciones_v2():
         db.close()
 
 
-def _rellenar_identidad_inicial():
-    db = SessionLocal()
-    try:
-        rellenar_identidad(db)
-    finally:
-        db.close()
-
-
-_rellenar_identidad_inicial()
+consolidar_identidad(engine)  # bases de la versión intermedia: matrícula -> rut, carrera -> plan_membresia
 migrar_evaluaciones_v2()
 
 # Límite de intentos de login por IP+usuario (R.184): 5 fallos en 15 minutos.
@@ -367,7 +360,7 @@ def identificar_socio(payload: IdentificarPayload, request: Request, db: Session
     socio = buscar_socio(db, payload.matricula)
     if not socio:
         return {"registrado": False, "matricula": payload.matricula}
-    return {**resumen_identificacion(db, socio), "matricula": socio.matricula}
+    return {**resumen_identificacion(db, socio), "matricula": socio.rut}
 
 
 # Registra a un socio nuevo (R.3). Si ya existe la matrícula responde 409; si hay otro socio con el mismo nombre,
@@ -386,7 +379,7 @@ def crear_socio(payload: SocioRegistro, request: Request, db: Session = Depends(
             "message": "Ya existe un socio con ese nombre. Si eres una persona distinta, confirma el registro.",
             "coincidencias": dup.coincidencias})
     registrar_acceso(db, "socio_registrado", recurso=f"socio/{socio.id}", ip=_ip(request))
-    return {"status": "success", "socio": resumen_identificacion(db, socio)["socio"], "matricula": socio.matricula}
+    return {"status": "success", "socio": resumen_identificacion(db, socio)["socio"], "matricula": socio.rut}
 
 
 # Actualiza datos personales desactualizados (R.5).
@@ -419,6 +412,23 @@ def guardar_validacion(eval_id: uuid.UUID, request: Request, payload: Validacion
     accion = "derivacion" if payload.derivar else f"validacion:{payload.nivel_final}"
     registrar_acceso(db, accion, usuario=user["sub"], rol=user["rol"], recurso=f"evaluacion/{eval_id}",
                      ip=_ip(request), personal_id=personal_id, sesion_id=sesion.id)
+    return {"status": "success", "evaluacion": serializar_sesion(cargar_sesion(db, eval_id))}
+
+
+# El encargado confirma (o retira la confirmación de) las mediciones capturadas por el tótem.
+@app.post("/api/evaluaciones/{eval_id}/mediciones/validar")
+def validar_mediciones_endpoint(eval_id: uuid.UUID, payload: ValidarMedicionesPayload, request: Request,
+                                user: dict = Depends(requiere_rol(*ROLES_DASHBOARD)), db: Session = Depends(get_db)):
+    sesion = cargar_sesion(db, eval_id)
+    if not sesion:
+        raise HTTPException(status_code=404, detail="Evaluación no encontrada")
+    try:
+        validar_mediciones(db, sesion, payload.validado)
+    except SesionCerrada:
+        raise HTTPException(status_code=409, detail="La evaluación ya fue revisada o derivada")
+    registrar_acceso(db, "mediciones_validadas" if payload.validado else "mediciones_sin_validar", usuario=user["sub"],
+                     rol=user["rol"], recurso=f"evaluacion/{eval_id}", ip=_ip(request),
+                     personal_id=_uuid_o_none(user.get("uid")), sesion_id=sesion.id)
     return {"status": "success", "evaluacion": serializar_sesion(cargar_sesion(db, eval_id))}
 
 

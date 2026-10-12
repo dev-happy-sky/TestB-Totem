@@ -1,3 +1,6 @@
+import datetime
+
+from identidad import calcular_edad
 import pytest
 from starlette.websockets import WebSocketDisconnect
 
@@ -28,8 +31,8 @@ def test_datos_quedan_mapeados_al_modelo(client, payload, totem_headers):
     db = main.SessionLocal()
     try:
         socio = db.query(Socio).one()
-        assert (socio.matricula, socio.nombre, socio.apellido, socio.edad_declarada) == ("20231234A", "Ana", "Pérez Soto", 30)
-        assert socio.carrera == "Ingeniería Civil" and socio.rut is None
+        assert (socio.rut, socio.nombre, socio.apellido) == ("20231234A", "Ana", "Pérez Soto")
+        assert (str(socio.fecha_nacimiento), socio.telefono, socio.plan_membresia) == ("2002-03-15", "+56 9 1234 5678", "Plan Estudiante")
         med = db.query(MedicionCorporal).one()
         assert (med.peso_kg, med.presion_sistolica, med.frecuencia_cardiaca) == (70.5, 118, 70)
         cues = db.query(CuestionarioObjetivo).one()
@@ -74,7 +77,7 @@ def test_historial_requiere_login(client):
 def test_historial_mantiene_el_contrato_del_dashboard(client, payload, totem_headers, auth):
     client.post("/api/evaluaciones", json=payload, headers=totem_headers)
     fila = client.get("/api/evaluaciones", headers=auth()).json()[0]
-    assert fila["id"] == "20231234A" and fila["nombre"] == "Ana Pérez Soto" and fila["edad"] == "30"
+    assert fila["id"] == "20231234A" and fila["nombre"] == "Ana Pérez Soto" and fila["edad"] == str(calcular_edad(datetime.date(2002, 3, 15), datetime.date.today()))
     assert fila["estado"] == "pendiente" and fila["nivelFinal"] is None
     assert fila["mediciones"]["presionSys"] == 118 and fila["mediciones"]["peso"] == "70.5"
     assert fila["salud"]["condiciones"] == ["Asma", "Lesión de rodilla"]

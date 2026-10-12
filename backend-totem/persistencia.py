@@ -10,7 +10,7 @@ from models import (
     AuditLog, CuestionarioObjetivo, InferenciaIA, MedicionCorporal, ResultadoRutina,
     SesionTotem, Socio, Totem,
 )
-from identidad import normalizar_matricula, normalizar_nombre, enmascarar_matricula, partir_nombre
+from identidad import calcular_edad, enmascarar_matricula, normalizar_matricula, normalizar_nombre, partir_nombre
 from schemas import EvaluacionPayload, SocioActualizacion, SocioRegistro
 
 VERSION_MODELO = "reglas-v1"
@@ -91,7 +91,22 @@ def _aware(fecha):
 
 
 def buscar_socio(db: Session, matricula: str) -> Optional[Socio]:
-    return db.query(Socio).filter(Socio.matricula == normalizar_matricula(matricula)).first()
+    """La matrícula (normalizada) se guarda en la columna `rut`."""
+    return db.query(Socio).filter(Socio.rut == normalizar_matricula(matricula)).first()
+
+
+def edad_del_socio(socio: Socio, hoy: Optional[datetime.date] = None) -> Optional[int]:
+    """Edad calculada desde la fecha de nacimiento; los registros antiguos usan la edad declarada."""
+    if socio.fecha_nacimiento:
+        return calcular_edad(socio.fecha_nacimiento, hoy or datetime.date.today())
+    return socio.edad_declarada
+
+
+def _nombre_y_apellido(nombre: str, apellido: Optional[str]):
+    """Con apellido explícito se usa tal cual; si no (clientes antiguos), se separa el nombre completo."""
+    if apellido and apellido.strip():
+        return nombre.strip(), apellido.strip()
+    return partir_nombre(nombre)
 
 
 def _obtener_o_crear_socio(db: Session, payload: EvaluacionPayload) -> Socio:
@@ -102,16 +117,17 @@ def _obtener_o_crear_socio(db: Session, payload: EvaluacionPayload) -> Socio:
     est = payload.estudiante
     socio = buscar_socio(db, est.matricula)
     if not socio:
-        nombre, apellido = partir_nombre(est.nombre)
-        socio = Socio(matricula=normalizar_matricula(est.matricula), nombre=nombre, apellido=apellido,
-                      edad_declarada=_a_int(est.edad), carrera=est.carrera)
+        nombre, apellido = _nombre_y_apellido(est.nombre, est.apellido)
+        socio = Socio(rut=normalizar_matricula(est.matricula), nombre=nombre, apellido=apellido,
+                      fecha_nacimiento=est.fecha_nacimiento, telefono=(est.telefono or "").strip() or None,
+                      plan_membresia=est.plan_membresia)
         db.add(socio)
         db.flush()
     return socio
 
 
-def _coincidencias_por_nombre(db: Session, nombre_completo: str):
-    objetivo = normalizar_nombre(nombre_completo)
+def _coincidencias_por_nombre(db: Session, nombre: str, apellido: str):
+    objetivo = normalizar_nombre(f"{nombre} {apellido}")
     return [x for x in db.query(Socio).all() if normalizar_nombre(f"{x.nombre} {x.apellido}") == objetivo]
 
 
@@ -120,16 +136,16 @@ def registrar_socio(db: Session, datos: SocioRegistro) -> Socio:
     if buscar_socio(db, datos.matricula):
         raise SocioExistente()
     if not datos.confirmar_duplicado:
-        coincidencias = _coincidencias_por_nombre(db, datos.nombre)
+        coincidencias = _coincidencias_por_nombre(db, datos.nombre, datos.apellido)
         if coincidencias:
             raise PosibleDuplicado([
-                {"nombre": f"{c.nombre} {c.apellido}".strip(), "carrera": c.carrera,
-                 "matricula": enmascarar_matricula(c.matricula or "")}
+                {"nombre": f"{c.nombre} {c.apellido}".strip(), "plan_membresia": c.plan_membresia,
+                 "matricula": enmascarar_matricula(c.rut or "")}
                 for c in coincidencias
             ])
-    nombre, apellido = partir_nombre(datos.nombre)
-    socio = Socio(matricula=datos.matricula, nombre=nombre, apellido=apellido, carrera=datos.carrera,
-                  edad_declarada=datos.edad)
+    socio = Socio(rut=datos.matricula, nombre=datos.nombre, apellido=datos.apellido,
+                  fecha_nacimiento=datos.fecha_nacimiento, telefono=(datos.telefono or "").strip() or None,
+                  plan_membresia=datos.plan_membresia)
     db.add(socio)
     db.commit()
     return socio
@@ -137,18 +153,17 @@ def registrar_socio(db: Session, datos: SocioRegistro) -> Socio:
 
 def actualizar_socio(db: Session, socio: Socio, datos: SocioActualizacion) -> list:
     """Actualiza datos personales desactualizados (R.5). Devuelve los campos que realmente cambiaron."""
+    nuevos = {c: getattr(datos, c) for c in ("nombre", "apellido", "fecha_nacimiento", "plan_membresia")
+              if getattr(datos, c) is not None}
+    if datos.telefono is not None:
+        nuevos["telefono"] = datos.telefono.strip() or None  # un teléfono vacío lo borra
     cambios = []
-    if datos.nombre is not None:
-        nombre, apellido = partir_nombre(datos.nombre)
-        if (nombre, apellido) != (socio.nombre, socio.apellido):
-            socio.nombre, socio.apellido = nombre, apellido
-            cambios.append("nombre")
-    if datos.carrera is not None and datos.carrera != socio.carrera:
-        socio.carrera = datos.carrera
-        cambios.append("carrera")
-    if datos.edad is not None and datos.edad != socio.edad_declarada:
-        socio.edad_declarada = datos.edad
-        cambios.append("edad")
+    for campo, valor in nuevos.items():
+        if getattr(socio, campo) != valor:
+            setattr(socio, campo, valor)
+            cambios.append(campo)
+    if "fecha_nacimiento" in cambios:
+        socio.edad_declarada = None  # la edad ahora se calcula de la fecha de nacimiento
     if cambios:
         db.commit()
     return cambios
@@ -156,6 +171,15 @@ def actualizar_socio(db: Session, socio: Socio, datos: SocioActualizacion) -> li
 
 def _estado_revision(sesion: SesionTotem) -> str:
     return {"derivada": "derivada", "revisada": "revisada", "validada": "revisada"}.get(sesion.estado, "pendiente")
+
+
+def datos_socio(socio: Socio) -> dict:
+    """Campos de `socios` que el tótem puede mostrar y editar."""
+    return {
+        "nombre": socio.nombre, "apellido": socio.apellido,
+        "fecha_nacimiento": socio.fecha_nacimiento.isoformat() if socio.fecha_nacimiento else None,
+        "telefono": socio.telefono, "plan_membresia": socio.plan_membresia, "edad": edad_del_socio(socio),
+    }
 
 
 def resumen_identificacion(db: Session, socio: Socio, ahora=None) -> dict:
@@ -168,8 +192,7 @@ def resumen_identificacion(db: Session, socio: Socio, ahora=None) -> dict:
     vigente = next((x for x in sesiones if _aware(x.fin_sesion or x.inicio_sesion) >= limite), None)
     return {
         "registrado": True,
-        "socio": {"nombre": f"{socio.nombre} {socio.apellido}".strip(), "carrera": socio.carrera or "",
-                  "edad": socio.edad_declarada},
+        "socio": datos_socio(socio),
         "evaluacion_vigente": ({"fecha": _aware(vigente.fin_sesion or vigente.inicio_sesion).isoformat(),
                                 "estado": _estado_revision(vigente)} if vigente else None),
         "evaluaciones_previas": [{"fecha": _aware(x.inicio_sesion).isoformat(), "estado": _estado_revision(x)}
@@ -216,7 +239,8 @@ def guardar_evaluacion(db: Session, payload: EvaluacionPayload, ip: Optional[str
     db.add(MedicionCorporal(
         sesion_id=sesion.id, capturado_en=fecha,
         peso_kg=_a_float(m.peso), porcentaje_grasa=_a_float(m.grasa), imc=_a_float(m.imc),
-        vo2_max=_a_float(m.vo2Max), frecuencia_cardiaca=m.fcReposo, fc_recuperacion=m.fcRecup,
+        vo2_max=_a_float(m.vo2Max), masa_muscular_kg=_a_float(m.masaMuscular),
+        frecuencia_cardiaca=m.fcReposo, fc_recuperacion=m.fcRecup,
         presion_sistolica=m.presionSys, presion_diastolica=m.presionDia,
     ))
 
@@ -224,7 +248,9 @@ def guardar_evaluacion(db: Session, payload: EvaluacionPayload, ip: Optional[str
     db.add(CuestionarioObjetivo(
         sesion_id=sesion.id, respondido_en=fecha,
         objetivo_principal=ent.objetivo, nivel_experiencia=ent.experiencia, duracion_sesion_min=ent.duracion,
-        lesiones_previas=", ".join(c for c in salud.condiciones if "esión" in c) or None,
+        dias_disponibles_semana=ent.diasSemana,
+        lesiones_previas=((salud.lesionesPrevias or "").strip()
+                          or ", ".join(c for c in salud.condiciones if "esión" in c) or None),
         antecedentes_cronicos=any(c in CONDICIONES_CRONICAS for c in salud.condiciones),
         sintomas=salud.sintomas, condiciones=salud.condiciones,
     ))
@@ -287,6 +313,15 @@ def validar_sesion(db: Session, sesion: SesionTotem, nivel_final: str, personal_
     return res
 
 
+def validar_mediciones(db: Session, sesion: SesionTotem, validado: bool = True) -> None:
+    """El encargado confirma (o retira la confirmación de) las mediciones capturadas. Solo con el caso abierto."""
+    if sesion.estado != "pendiente" or sesion.resultado:
+        raise SesionCerrada()
+    for medicion in sesion.mediciones:
+        medicion.validado = validado
+    db.commit()
+
+
 def revisar_alerta(db: Session, sesion: SesionTotem, personal_id=None) -> None:
     """Marca la alerta como revisada sin cerrar el caso (R.140). Es idempotente."""
     inf = sesion.inferencia
@@ -299,7 +334,7 @@ def revisar_alerta(db: Session, sesion: SesionTotem, personal_id=None) -> None:
 
 def listar_historial_socio(db: Session, matricula: str, limite: int = 20):
     """Evaluaciones del socio, de la más reciente a la más antigua (R.130, R.131)."""
-    return (_consulta_sesiones(db).join(Socio, SesionTotem.socio_id == Socio.id).filter(Socio.matricula == normalizar_matricula(matricula))
+    return (_consulta_sesiones(db).join(Socio, SesionTotem.socio_id == Socio.id).filter(Socio.rut == normalizar_matricula(matricula))
             .order_by(SesionTotem.inicio_sesion.desc()).limit(limite).all())
 
 
@@ -316,15 +351,18 @@ def serializar_sesion(sesion: SesionTotem) -> dict:
     return {
         "idBaseDatos": str(sesion.id),
         "idUnico": f"db_{sesion.id}",
-        "id": socio.matricula or socio.rut,
-        "matricula": socio.matricula or socio.rut,
+        "id": socio.rut,
+        "matricula": socio.rut,
         "totem": sesion.totem.codigo_serial if sesion.totem else None,
         "sucursal": sesion.totem.sucursal if sesion.totem else None,
         "inicioEvaluacion": _aware(sesion.inicio_sesion).isoformat(),
         "finEvaluacion": _aware(sesion.fin_sesion).isoformat() if sesion.fin_sesion else None,
         "nombre": f"{socio.nombre} {socio.apellido}".strip(),
-        "carrera": socio.carrera or socio.plan_membresia or "",
-        "edad": "" if socio.edad_declarada is None else str(socio.edad_declarada),
+        "apellido": socio.apellido,
+        "fechaNacimiento": socio.fecha_nacimiento.isoformat() if socio.fecha_nacimiento else None,
+        "telefono": socio.telefono,
+        "planMembresia": socio.plan_membresia or "",
+        "edad": "" if edad_del_socio(socio) is None else str(edad_del_socio(socio)),
         "objetivo": cues.objetivo_principal if cues else "",
         "fecha": sesion.inicio_sesion.isoformat(),
         "iaSugerida": inf.categoria_aptitud if inf else None,
@@ -341,8 +379,20 @@ def serializar_sesion(sesion: SesionTotem) -> dict:
             "imc": fmt(med.imc) if med else "",
             "grasa": fmt(med.porcentaje_grasa) if med else "",
             "vo2Max": fmt(med.vo2_max) if med else "",
+            "masaMuscular": fmt(med.masa_muscular_kg) if med else "",
+            "capturadoEn": _aware(med.capturado_en).isoformat() if med else None,
+            "validado": bool(med and med.validado),
         },
-        "salud": {"sintomas": (cues.sintomas or []) if cues else [], "condiciones": (cues.condiciones or []) if cues else []},
+        "entrenamiento": {
+            "objetivo": cues.objetivo_principal if cues else "", "experiencia": cues.nivel_experiencia if cues else "",
+            "diasSemana": cues.dias_disponibles_semana if cues else None,
+            "duracion": cues.duracion_sesion_min if cues else None,
+        },
+        "salud": {
+            "sintomas": (cues.sintomas or []) if cues else [], "condiciones": (cues.condiciones or []) if cues else [],
+            "lesionesPrevias": cues.lesiones_previas if cues else None,
+            "antecedentesCronicos": bool(cues and cues.antecedentes_cronicos),
+        },
         "estado": "pendiente" if estado_revision == "pendiente" else "validado",
         "estadoRevision": estado_revision,
         "nivelFinal": res.nivel_final if res else None,
@@ -360,20 +410,3 @@ def registrar_auditoria(db: Session, accion: str, usuario=None, rol=None, recurs
         detalle={"usuario": usuario, "rol": rol, "recurso": recurso, "ip": ip},
     ))
     db.commit()
-
-
-def rellenar_identidad(db: Session) -> int:
-    """Datos de la versión anterior: la matrícula estaba en `rut` y la carrera en `plan_membresia`. Idempotente."""
-    pendientes = db.query(Socio).filter(Socio.matricula.is_(None), Socio.rut.isnot(None)).all()
-    movidos = 0
-    for socio in pendientes:
-        normalizada = normalizar_matricula(socio.rut)
-        if db.query(Socio).filter(Socio.matricula == normalizada).first():
-            continue  # ya existe otro socio con esa matrícula: no se toca, queda para revisión manual
-        socio.matricula, socio.rut = normalizada, None
-        if socio.carrera is None:
-            socio.carrera, socio.plan_membresia = socio.plan_membresia, None
-        movidos += 1
-    if movidos:
-        db.commit()
-    return movidos

@@ -27,11 +27,15 @@ const llamadas = (clave: string) =>
     ([url, init]) => `${init?.method ?? 'GET'} ${String(url).replace(/^https?:\/\/[^/]+/, '')}` === clave,
   );
 
+const SOCIO = {
+  nombre: 'Ana', apellido: 'Pérez Soto', fecha_nacimiento: '2002-03-15', telefono: '+56 9 1234 5678',
+  plan_membresia: 'Plan Estudiante', edad: 24,
+};
 const NUEVO = { 'POST /api/socios/identificar': { body: { registrado: false, matricula: MATRICULA } } };
 const registrado = (extra: object = {}) => ({
   'POST /api/socios/identificar': {
     body: {
-      registrado: true, matricula: MATRICULA, socio: { nombre: 'Ana Pérez Soto', carrera: 'Ingeniería Civil', edad: 21 },
+      registrado: true, matricula: MATRICULA, socio: SOCIO,
       evaluacion_vigente: null, evaluaciones_previas: [], vigencia_horas: 24, ...extra,
     },
   },
@@ -49,10 +53,15 @@ const buscar = async (matricula = MATRICULA) => {
   await fireEvent.changeText(screen.getByLabelText('Matrícula'), matricula);
   await fireEvent.press(screen.getByText('Buscar mi matrícula'));
 };
-const llenarDatos = async (nombre = 'Ana Pérez Soto', carrera = 'Ingeniería Civil', edad = '21') => {
-  await fireEvent.changeText(screen.getByLabelText('Nombre completo'), nombre);
-  await fireEvent.changeText(screen.getByLabelText('Carrera'), carrera);
-  await fireEvent.changeText(screen.getByLabelText('Edad'), edad);
+type Datos = { nombre: string; apellido: string; fecha: string; telefono: string; plan: string };
+const DATOS: Datos = { nombre: 'Ana', apellido: 'Pérez Soto', fecha: '15/03/2002', telefono: '+56 9 1234 5678', plan: 'Plan Estudiante' };
+const llenarDatos = async (cambios: Partial<Datos> = {}) => {
+  const d = { ...DATOS, ...cambios };
+  await fireEvent.changeText(screen.getByLabelText('Nombre'), d.nombre);
+  await fireEvent.changeText(screen.getByLabelText('Apellido'), d.apellido);
+  await fireEvent.changeText(screen.getByLabelText('Fecha de nacimiento'), d.fecha);
+  await fireEvent.changeText(screen.getByLabelText('Teléfono'), d.telefono);
+  await fireEvent.changeText(screen.getByLabelText('Plan de membresía'), d.plan);
 };
 const botonDeAlerta = (titulo: string, texto: string): AlertButton => {
   const llamada = alerta.mock.calls.find(([t]) => t === titulo);
@@ -68,8 +77,11 @@ const llegarAlPaso2 = async () => {
   await fireEvent.press(screen.getByText('Continuar →'));
   await screen.findByText('PASO 2 - ESTACIÓN DE SENSORES');
 };
-const irAlUltimoPaso = async () => {
-  for (let i = 0; i < 3; i++) await fireEvent.press(screen.getByText('Continuar →'));
+const irAlUltimoPaso = async (dias = 3) => {
+  await fireEvent.press(screen.getByText('Continuar →')); // paso 3
+  await fireEvent.press(screen.getByLabelText(`${dias} ${dias === 1 ? 'día' : 'días'} a la semana`));
+  await fireEvent.press(screen.getByText('Continuar →')); // paso 4
+  await fireEvent.press(screen.getByText('Continuar →')); // paso 5
 };
 
 describe('identificación por matrícula (R.1, R.2)', () => {
@@ -147,9 +159,11 @@ describe('socio ya registrado (R.4, R.5, R.7)', () => {
 
     // Assert
     expect(await screen.findByText('Hola, Ana')).toBeTruthy();
-    expect(screen.getByLabelText('Nombre completo').props.value).toBe('Ana Pérez Soto');
-    expect(screen.getByLabelText('Carrera').props.value).toBe('Ingeniería Civil');
-    expect(screen.getByLabelText('Edad').props.value).toBe('21');
+    expect(screen.getByLabelText('Nombre').props.value).toBe('Ana');
+    expect(screen.getByLabelText('Apellido').props.value).toBe('Pérez Soto');
+    expect(screen.getByLabelText('Fecha de nacimiento').props.value).toBe('15/03/2002');
+    expect(screen.getByLabelText('Teléfono').props.value).toBe('+56 9 1234 5678');
+    expect(screen.getByLabelText('Plan de membresía').props.value).toBe('Plan Estudiante');
   });
 
   test('avisa si ya tiene una evaluación vigente y lista las anteriores', async () => {
@@ -196,11 +210,11 @@ describe('socio ya registrado (R.4, R.5, R.7)', () => {
 
   test('si cambió un dato lo actualiza enviando solo ese campo', async () => {
     // Arrange
-    mockApi({ ...registrado(), 'PUT /api/socios/20231234A': { body: { status: 'success', cambios: ['carrera'] } } });
+    mockApi({ ...registrado(), 'PUT /api/socios/20231234A': { body: { status: 'success', cambios: ['plan_membresia'] } } });
     await render(<App />);
     await buscar();
     await screen.findByText('Hola, Ana');
-    await fireEvent.changeText(screen.getByLabelText('Carrera'), 'Ingeniería Informática');
+    await fireEvent.changeText(screen.getByLabelText('Plan de membresía'), 'Plan Premium');
     await fireEvent.press(screen.getByText(CONSENTIMIENTO));
 
     // Act
@@ -208,7 +222,7 @@ describe('socio ya registrado (R.4, R.5, R.7)', () => {
 
     // Assert
     await screen.findByText('PASO 2 - ESTACIÓN DE SENSORES');
-    expect(JSON.parse(llamadas('PUT /api/socios/20231234A')[0][1].body)).toEqual({ carrera: 'Ingeniería Informática' });
+    expect(JSON.parse(llamadas('PUT /api/socios/20231234A')[0][1].body)).toEqual({ plan_membresia: 'Plan Premium' });
   });
 
   test('si falla la actualización avisa y no avanza', async () => {
@@ -217,7 +231,7 @@ describe('socio ya registrado (R.4, R.5, R.7)', () => {
     await render(<App />);
     await buscar();
     await screen.findByText('Hola, Ana');
-    await fireEvent.changeText(screen.getByLabelText('Edad'), '22');
+    await fireEvent.changeText(screen.getByLabelText('Teléfono'), '987654321');
     await fireEvent.press(screen.getByText(CONSENTIMIENTO));
 
     // Act
@@ -225,6 +239,40 @@ describe('socio ya registrado (R.4, R.5, R.7)', () => {
 
     // Assert
     await waitFor(() => expect(alerta).toHaveBeenCalledWith('No se pudieron actualizar tus datos', 'Socio no encontrado'));
+    expect(screen.getByText('PASO 1 - IDENTIFICACIÓN')).toBeTruthy();
+  });
+
+  test('un cambio de fecha de nacimiento se envía en formato ISO y un teléfono borrado, vacío', async () => {
+    // Arrange
+    mockApi({ ...registrado(), 'PUT /api/socios/20231234A': { body: { status: 'success', cambios: [] } } });
+    await render(<App />);
+    await buscar();
+    await screen.findByText('Hola, Ana');
+    await fireEvent.changeText(screen.getByLabelText('Fecha de nacimiento'), '10/01/2001');
+    await fireEvent.changeText(screen.getByLabelText('Teléfono'), '');
+    await fireEvent.press(screen.getByText(CONSENTIMIENTO));
+
+    // Act
+    await fireEvent.press(screen.getByText('Continuar →'));
+
+    // Assert
+    await screen.findByText('PASO 2 - ESTACIÓN DE SENSORES');
+    expect(JSON.parse(llamadas('PUT /api/socios/20231234A')[0][1].body)).toEqual({ fecha_nacimiento: '2001-01-10', telefono: '' });
+  });
+
+  test('un socio antiguo sin fecha de nacimiento debe completarla antes de continuar', async () => {
+    // Arrange
+    mockApi(registrado({ socio: { ...SOCIO, fecha_nacimiento: null, edad: 33 } }));
+    await render(<App />);
+    await buscar();
+    await screen.findByText('Hola, Ana');
+    await fireEvent.press(screen.getByText(CONSENTIMIENTO));
+
+    // Act
+    await fireEvent.press(screen.getByText('Continuar →'));
+
+    // Assert
+    expect(alerta).toHaveBeenCalledWith('Fecha de nacimiento inválida', expect.any(String));
     expect(screen.getByText('PASO 1 - IDENTIFICACIÓN')).toBeTruthy();
   });
 
@@ -257,8 +305,9 @@ describe('socio nuevo (R.3) y posibles duplicados (R.11)', () => {
     await prepararNuevo();
 
     // Assert
-    expect(screen.getByLabelText('Nombre completo').props.value).toBe('');
-    expect(screen.getByLabelText('Carrera').props.value).toBe('');
+    for (const etiqueta of ['Nombre', 'Apellido', 'Fecha de nacimiento', 'Teléfono', 'Plan de membresía']) {
+      expect(screen.getByLabelText(etiqueta).props.value).toBe('');
+    }
     expect(screen.getByText(CONSENTIMIENTO)).toBeTruthy();
   });
 
@@ -276,28 +325,32 @@ describe('socio nuevo (R.3) y posibles duplicados (R.11)', () => {
   });
 
   test.each([
-    ['sin nombre', ['', 'Ingeniería', '21']],
-    ['sin carrera', ['Ana Pérez', '', '21']],
-    ['con edad no numérica', ['Ana Pérez', 'Ingeniería', 'abc']],
-    ['con edad fuera de rango', ['Ana Pérez', 'Ingeniería', '200']],
-  ])('no registra un socio %s', async (_nombre, [n, c, e]) => {
+    ['sin nombre', { nombre: '' }, 'Datos incompletos'],
+    ['sin apellido', { apellido: '' }, 'Datos incompletos'],
+    ['sin plan de membresía', { plan: '' }, 'Datos incompletos'],
+    ['con fecha mal escrita', { fecha: '2002-03-15' }, 'Fecha de nacimiento inválida'],
+    ['con fecha inexistente', { fecha: '30/02/2002' }, 'Fecha de nacimiento inválida'],
+    ['con fecha futura', { fecha: '01/01/2999' }, 'Fecha de nacimiento inválida'],
+    ['con fecha de hace más de 120 años', { fecha: '01/01/1800' }, 'Fecha de nacimiento inválida'],
+    ['con teléfono inválido', { telefono: 'abc' }, 'Teléfono inválido'],
+  ])('no registra un socio %s', async (_nombre, cambios, titulo) => {
     // Arrange
     await prepararNuevo();
-    await llenarDatos(n, c, e);
+    await llenarDatos(cambios);
     await fireEvent.press(screen.getByText(CONSENTIMIENTO));
 
     // Act
     await fireEvent.press(screen.getByText('Continuar →'));
 
     // Assert
-    expect(alerta).toHaveBeenCalledWith('Datos incompletos', expect.any(String));
+    expect(alerta).toHaveBeenCalledWith(titulo, expect.any(String));
     expect(llamadas('POST /api/socios')).toHaveLength(0);
   });
 
   test('registra al socio con la matrícula normalizada y la edad numérica, y pasa a las mediciones', async () => {
     // Arrange
     await prepararNuevo({ 'POST /api/socios': { status: 201, body: { status: 'success' } } });
-    await llenarDatos('  Ana Pérez Soto ', 'Ingeniería Civil', '21');
+    await llenarDatos({ nombre: '  Ana ', apellido: ' Pérez Soto  ' });
     await fireEvent.press(screen.getByText(CONSENTIMIENTO));
 
     // Act
@@ -306,8 +359,23 @@ describe('socio nuevo (R.3) y posibles duplicados (R.11)', () => {
     // Assert
     await screen.findByText('PASO 2 - ESTACIÓN DE SENSORES');
     expect(JSON.parse(llamadas('POST /api/socios')[0][1].body)).toEqual({
-      matricula: MATRICULA, nombre: 'Ana Pérez Soto', carrera: 'Ingeniería Civil', edad: 21, confirmar_duplicado: false,
+      matricula: MATRICULA, nombre: 'Ana', apellido: 'Pérez Soto', fecha_nacimiento: '2002-03-15',
+      telefono: '+56 9 1234 5678', plan_membresia: 'Plan Estudiante', confirmar_duplicado: false,
     });
+  });
+
+  test('el teléfono en blanco no se envía', async () => {
+    // Arrange
+    await prepararNuevo({ 'POST /api/socios': { status: 201, body: { status: 'success' } } });
+    await llenarDatos({ telefono: '   ' });
+    await fireEvent.press(screen.getByText(CONSENTIMIENTO));
+
+    // Act
+    await fireEvent.press(screen.getByText('Continuar →'));
+
+    // Assert
+    await screen.findByText('PASO 2 - ESTACIÓN DE SENSORES');
+    expect(JSON.parse(llamadas('POST /api/socios')[0][1].body)).not.toHaveProperty('telefono');
   });
 
   test('ante un posible duplicado pide confirmar y reenvía si es otra persona', async () => {
@@ -427,7 +495,12 @@ describe('envío de la evaluación', () => {
     const cuerpo = JSON.parse(init.body);
     expect(init.headers['X-Totem-Key']).toBe('clave-test');
     expect(cuerpo.consentimiento).toBe(true);
-    expect(cuerpo.estudiante).toEqual({ nombre: 'Ana Pérez Soto', matricula: MATRICULA, edad: '21', carrera: 'Ingeniería Civil' });
+    expect(cuerpo.estudiante).toEqual({
+      matricula: MATRICULA, nombre: 'Ana', apellido: 'Pérez Soto', fecha_nacimiento: '2002-03-15',
+      telefono: '+56 9 1234 5678', plan_membresia: 'Plan Estudiante',
+    });
+    expect(cuerpo.entrenamiento).toMatchObject({ diasSemana: 3, objetivo: 'Fuerza', experiencia: 'Intermedio' });
+    expect(cuerpo.mediciones.masaMuscular).toBe('31.2');
     expect(cuerpo.totem_serial).toBe('TOTEM-GIM-01');
     expect(cuerpo.totem_sucursal).toBe('Campus San Joaquín');
     expect(Number.isNaN(Date.parse(cuerpo.inicio))).toBe(false);
@@ -475,5 +548,101 @@ describe('envío de la evaluación', () => {
 
     // Assert
     await waitFor(() => expect(alerta).toHaveBeenCalledWith('Error de conexión', 'sin red'));
+  });
+});
+
+describe('campos del cuestionario y las mediciones del modelo', () => {
+  test('el paso 2 muestra la masa muscular junto a peso, IMC y grasa', async () => {
+    // Arrange / Act
+    mockApi(registrado());
+    await llegarAlPaso2();
+
+    // Assert
+    expect(screen.getByText('MASA MUSCULAR')).toBeTruthy();
+    expect(screen.getByText('PESO')).toBeTruthy();
+    expect(screen.getByText('GRASA')).toBeTruthy();
+  });
+
+  test('no deja pasar del paso 3 sin indicar los días por semana', async () => {
+    // Arrange
+    mockApi(registrado());
+    await llegarAlPaso2();
+    await fireEvent.press(screen.getByText('Continuar →')); // paso 3
+
+    // Act
+    await fireEvent.press(screen.getByText('Continuar →'));
+
+    // Assert
+    expect(alerta).toHaveBeenCalledWith('Falta un dato', expect.any(String));
+    expect(screen.getByText('PASO 3 - TU OBJETIVO')).toBeTruthy();
+  });
+
+  test('los días por semana elegidos se envían con la evaluación', async () => {
+    // Arrange
+    mockApi({ ...registrado(), 'POST /api/evaluaciones': { body: { status: 'success' } } });
+    await llegarAlPaso2();
+    await irAlUltimoPaso(5);
+
+    // Act
+    await fireEvent.press(screen.getByText('Registrar mi ingreso'));
+
+    // Assert
+    await waitFor(() => expect(llamadas('POST /api/evaluaciones')).toHaveLength(1));
+    expect(JSON.parse(llamadas('POST /api/evaluaciones')[0][1].body).entrenamiento.diasSemana).toBe(5);
+  });
+
+  test('las lesiones previas se envían sin espacios sobrantes', async () => {
+    // Arrange
+    mockApi({ ...registrado(), 'POST /api/evaluaciones': { body: { status: 'success' } } });
+    await llegarAlPaso2();
+    await fireEvent.press(screen.getByText('Continuar →')); // paso 3
+    await fireEvent.press(screen.getByLabelText('3 días a la semana'));
+    await fireEvent.press(screen.getByText('Continuar →')); // paso 4
+    await fireEvent.changeText(screen.getByLabelText('Lesiones previas'), '  Esguince de tobillo en 2025 ');
+    await fireEvent.press(screen.getByText('Continuar →')); // paso 5
+
+    // Act
+    await fireEvent.press(screen.getByText('Registrar mi ingreso'));
+
+    // Assert
+    await waitFor(() => expect(llamadas('POST /api/evaluaciones')).toHaveLength(1));
+    expect(JSON.parse(llamadas('POST /api/evaluaciones')[0][1].body).salud.lesionesPrevias).toBe('Esguince de tobillo en 2025');
+  });
+
+  test('sin lesiones previas el campo no se envía', async () => {
+    // Arrange
+    mockApi({ ...registrado(), 'POST /api/evaluaciones': { body: { status: 'success' } } });
+    await llegarAlPaso2();
+    await irAlUltimoPaso();
+
+    // Act
+    await fireEvent.press(screen.getByText('Registrar mi ingreso'));
+
+    // Assert
+    await waitFor(() => expect(llamadas('POST /api/evaluaciones')).toHaveLength(1));
+    expect(JSON.parse(llamadas('POST /api/evaluaciones')[0][1].body).salud).not.toHaveProperty('lesionesPrevias');
+  });
+
+  test('tras cancelar se borran los días y las lesiones', async () => {
+    // Arrange
+    mockApi(registrado());
+    await llegarAlPaso2();
+    await fireEvent.press(screen.getByText('Continuar →'));
+    await fireEvent.press(screen.getByLabelText('4 días a la semana'));
+    await fireEvent.press(screen.getByText('Cancelar evaluación'));
+    await botonDeAlerta('¿Cancelar la evaluación?', 'Sí, cancelar').onPress?.();
+    await screen.findByText('PASO 1 - IDENTIFICACIÓN');
+
+    // Act
+    await buscar();
+    await screen.findByText(/Hola, Ana/);
+    await fireEvent.press(screen.getByText(CONSENTIMIENTO));
+    await fireEvent.press(screen.getByText('Continuar →'));
+    await screen.findByText('PASO 2 - ESTACIÓN DE SENSORES');
+    await fireEvent.press(screen.getByText('Continuar →'));
+    await fireEvent.press(screen.getByText('Continuar →'));
+
+    // Assert
+    expect(alerta).toHaveBeenCalledWith('Falta un dato', expect.any(String));
   });
 });

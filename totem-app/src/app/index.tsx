@@ -3,16 +3,18 @@ import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, SafeAr
 import Slider from '@react-native-community/slider';
 
 import {
-  actualizarSocio, enviarEvaluacion, identificarSocio, registrarSocio, type RespuestaIdentificacion,
+  actualizarSocio, enviarEvaluacion, identificarSocio, registrarSocio, type CambiosSocio, type RespuestaIdentificacion,
 } from '../services/api';
+import { isoADisplay, parseFechaNacimiento, telefonoValido } from '../utils/fecha';
 import { matriculaValida, MENSAJE_MATRICULA, normalizarMatricula } from '../utils/matricula';
 
 type Fase = 'ingreso' | 'registrado' | 'nuevo';
 type Previas = Extract<RespuestaIdentificacion, { registrado: true }>;
 
-const FORM_INICIAL = { nombre: '', matricula: '', edad: '', carrera: '' };
+// Campos de `socios`. La fecha se escribe como DD/MM/AAAA y el teléfono es opcional.
+const FORM_INICIAL = { matricula: '', nombre: '', apellido: '', fechaNacimiento: '', telefono: '', plan: '' };
 const MEDICIONES_INICIALES = {
-  presionSys: 117, presionDia: 81, fcReposo: 79, fcRecup: 101, peso: '90.3', imc: '27.3', grasa: '18.3', vo2Max: '44.6',
+  presionSys: 117, presionDia: 81, fcReposo: 79, fcRecup: 101, peso: '90.3', imc: '27.3', grasa: '18.3', vo2Max: '44.6', masaMuscular: '31.2',
 };
 
 const formatearFecha = (iso: string) => {
@@ -31,7 +33,7 @@ export default function App() {
   const [formData, setFormData] = useState(FORM_INICIAL);
   const [fase, setFase] = useState<Fase>('ingreso');
   const [previas, setPrevias] = useState<Previas | null>(null);
-  const [datosServidor, setDatosServidor] = useState<{ nombre: string; carrera: string; edad: string } | null>(null);
+  const [datosServidor, setDatosServidor] = useState<Omit<typeof FORM_INICIAL, 'matricula'> | null>(null);
   const [errorIdentificacion, setErrorIdentificacion] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const [inicioEvaluacion, setInicioEvaluacion] = useState<string | null>(null);
@@ -46,8 +48,10 @@ export default function App() {
   const [objetivo, setObjetivo] = useState('Fuerza');
   const [experiencia, setExperiencia] = useState('Intermedio');
   const [duracion, setDuracion] = useState(60);
+  const [diasSemana, setDiasSemana] = useState<number | null>(null);
 
   // --- ESTADO PASO 4 ---
+  const [lesionesPrevias, setLesionesPrevias] = useState('');
   const [sintomasHoy, setSintomasHoy] = useState(['Medicación permanente']);
   const [condicionesSalud, setCondicionesSalud] = useState(['Hipertensión']);
 
@@ -61,7 +65,8 @@ export default function App() {
       peso: (Math.random() * (110 - 60) + 60).toFixed(1),
       imc: (Math.random() * (32 - 18.5) + 18.5).toFixed(1),
       grasa: (Math.random() * (25 - 10) + 10).toFixed(1),
-      vo2Max: (Math.random() * (60 - 30) + 30).toFixed(1)
+      vo2Max: (Math.random() * (60 - 30) + 30).toFixed(1),
+      masaMuscular: (Math.random() * (45 - 25) + 25).toFixed(1)
     });
   };
 
@@ -83,6 +88,8 @@ export default function App() {
     setConsentimiento(false);
     setInicioEvaluacion(null);
     setMediciones(MEDICIONES_INICIALES);
+    setDiasSemana(null);
+    setLesionesPrevias('');
     setPasoActual(1);
   };
 
@@ -110,7 +117,10 @@ export default function App() {
     }
     if (resultado.data.registrado) {
       const { socio } = resultado.data;
-      const datos = { nombre: socio.nombre, carrera: socio.carrera, edad: socio.edad == null ? '' : String(socio.edad) };
+      const datos = {
+        nombre: socio.nombre, apellido: socio.apellido, fechaNacimiento: isoADisplay(socio.fecha_nacimiento),
+        telefono: socio.telefono ?? '', plan: socio.plan_membresia ?? '',
+      };
       setPrevias(resultado.data);
       setDatosServidor(datos);
       setFormData({ matricula, ...datos });
@@ -124,9 +134,16 @@ export default function App() {
   };
 
   const datosPersonalesValidos = () => {
-    const edad = Number(formData.edad);
-    if (formData.nombre.trim().length < 2 || formData.carrera.trim().length < 2 || !Number.isInteger(edad) || edad < 1 || edad > 120) {
-      Alert.alert('Datos incompletos', 'Completa tu nombre, tu carrera y una edad válida para continuar.');
+    if (formData.nombre.trim().length < 2 || formData.apellido.trim().length < 2 || formData.plan.trim().length < 2) {
+      Alert.alert('Datos incompletos', 'Completa tu nombre, tu apellido y tu plan de membresía para continuar.');
+      return false;
+    }
+    if (!parseFechaNacimiento(formData.fechaNacimiento)) {
+      Alert.alert('Fecha de nacimiento inválida', 'Escríbela como DD/MM/AAAA, por ejemplo 15/03/2002.');
+      return false;
+    }
+    if (!telefonoValido(formData.telefono)) {
+      Alert.alert('Teléfono inválido', 'Usa solo números, espacios, + o guiones (mínimo 6 dígitos), o déjalo en blanco.');
       return false;
     }
     return true;
@@ -141,8 +158,10 @@ export default function App() {
   const registrarNuevo = async (confirmarDuplicado = false) => {
     setOcupado(true);
     const resultado = await registrarSocio({
-      matricula: normalizarMatricula(formData.matricula), nombre: formData.nombre.trim(),
-      carrera: formData.carrera.trim(), edad: Number(formData.edad), confirmar_duplicado: confirmarDuplicado,
+      matricula: normalizarMatricula(formData.matricula), nombre: formData.nombre.trim(), apellido: formData.apellido.trim(),
+      fecha_nacimiento: parseFechaNacimiento(formData.fechaNacimiento) as string,
+      ...(formData.telefono.trim() ? { telefono: formData.telefono.trim() } : {}),
+      plan_membresia: formData.plan.trim(), confirmar_duplicado: confirmarDuplicado,
     });
     setOcupado(false);
     if (resultado.ok) {
@@ -160,13 +179,17 @@ export default function App() {
     }
   };
 
-  // R.5: si cambió algún dato personal, se actualiza antes de empezar.
+  // R.5: si cambió algún dato personal, se actualiza antes de empezar. Solo se envían los campos que cambiaron.
   const continuarRegistrado = async () => {
-    const cambios: Partial<{ nombre: string; carrera: string; edad: number }> = {};
+    const cambios: CambiosSocio = {};
     if (datosServidor) {
       if (formData.nombre.trim() !== datosServidor.nombre) cambios.nombre = formData.nombre.trim();
-      if (formData.carrera.trim() !== datosServidor.carrera) cambios.carrera = formData.carrera.trim();
-      if (formData.edad.trim() !== datosServidor.edad) cambios.edad = Number(formData.edad);
+      if (formData.apellido.trim() !== datosServidor.apellido) cambios.apellido = formData.apellido.trim();
+      if (formData.fechaNacimiento.trim() !== datosServidor.fechaNacimiento) {
+        cambios.fecha_nacimiento = parseFechaNacimiento(formData.fechaNacimiento) as string;
+      }
+      if (formData.telefono.trim() !== datosServidor.telefono) cambios.telefono = formData.telefono.trim();
+      if (formData.plan.trim() !== datosServidor.plan) cambios.plan_membresia = formData.plan.trim();
     }
     if (Object.keys(cambios).length > 0) {
       setOcupado(true);
@@ -195,6 +218,10 @@ export default function App() {
       else await continuarRegistrado();
       return;
     }
+    if (pasoActual === 3 && diasSemana === null) {
+      Alert.alert('Falta un dato', 'Indica cuántos días a la semana puedes entrenar.');
+      return;
+    }
     if (pasoActual < totalPasos) setPasoActual(pasoActual + 1);
   };
   const retroceder = () => { if (pasoActual > 1) setPasoActual(pasoActual - 1); };
@@ -207,10 +234,14 @@ export default function App() {
     }
     const payload = {
       consentimiento,
-      estudiante: { ...formData, matricula: normalizarMatricula(formData.matricula) },
+      estudiante: {
+        matricula: normalizarMatricula(formData.matricula), nombre: formData.nombre.trim(), apellido: formData.apellido.trim(),
+        fecha_nacimiento: parseFechaNacimiento(formData.fechaNacimiento) ?? undefined,
+        telefono: formData.telefono.trim() || undefined, plan_membresia: formData.plan.trim(),
+      },
       mediciones: mediciones,
-      entrenamiento: { objetivo, experiencia, duracion },
-      salud: { sintomas: sintomasHoy, condiciones: condicionesSalud },
+      entrenamiento: { objetivo, experiencia, duracion, diasSemana: diasSemana ?? undefined },
+      salud: { sintomas: sintomasHoy, condiciones: condicionesSalud, lesionesPrevias: lesionesPrevias.trim() || undefined },
       totem_serial: process.env.EXPO_PUBLIC_TOTEM_SERIAL,
       totem_sucursal: process.env.EXPO_PUBLIC_TOTEM_SUCURSAL,
       inicio: inicioEvaluacion ?? undefined,
@@ -284,11 +315,15 @@ export default function App() {
             </View>
           )}
 
-          <View style={styles.inputGroup}><Text style={styles.label}>NOMBRE COMPLETO</Text><TextInput style={styles.input} value={formData.nombre} accessibilityLabel="Nombre completo" onChangeText={(t) => setFormData({ ...formData, nombre: t })} /></View>
           <View style={styles.row}>
-            <View style={[styles.inputGroup, { flex: 1, marginRight: 10 }]}><Text style={styles.label}>CARRERA</Text><TextInput style={styles.input} value={formData.carrera} accessibilityLabel="Carrera" onChangeText={(t) => setFormData({ ...formData, carrera: t })} /></View>
-            <View style={[styles.inputGroup, { width: 100 }]}><Text style={styles.label}>EDAD</Text><TextInput style={styles.input} value={formData.edad} keyboardType="numeric" accessibilityLabel="Edad" onChangeText={(t) => setFormData({ ...formData, edad: t })} /></View>
+            <View style={[styles.inputGroup, { flex: 1, marginRight: 10 }]}><Text style={styles.label}>NOMBRE</Text><TextInput style={styles.input} value={formData.nombre} accessibilityLabel="Nombre" onChangeText={(t) => setFormData({ ...formData, nombre: t })} /></View>
+            <View style={[styles.inputGroup, { flex: 1 }]}><Text style={styles.label}>APELLIDO</Text><TextInput style={styles.input} value={formData.apellido} accessibilityLabel="Apellido" onChangeText={(t) => setFormData({ ...formData, apellido: t })} /></View>
           </View>
+          <View style={styles.row}>
+            <View style={[styles.inputGroup, { flex: 1, marginRight: 10 }]}><Text style={styles.label}>FECHA DE NACIMIENTO</Text><TextInput style={styles.input} value={formData.fechaNacimiento} placeholder="DD/MM/AAAA" keyboardType="numbers-and-punctuation" accessibilityLabel="Fecha de nacimiento" onChangeText={(t) => setFormData({ ...formData, fechaNacimiento: t })} /></View>
+            <View style={[styles.inputGroup, { flex: 1 }]}><Text style={styles.label}>TELÉFONO (OPCIONAL)</Text><TextInput style={styles.input} value={formData.telefono} keyboardType="phone-pad" accessibilityLabel="Teléfono" onChangeText={(t) => setFormData({ ...formData, telefono: t })} /></View>
+          </View>
+          <View style={styles.inputGroup}><Text style={styles.label}>PLAN DE MEMBRESÍA</Text><TextInput style={styles.input} value={formData.plan} accessibilityLabel="Plan de membresía" onChangeText={(t) => setFormData({ ...formData, plan: t })} /></View>
 
           <TouchableOpacity style={[styles.checkboxCard, { width: "100%" }]} onPress={() => setConsentimiento(!consentimiento)} accessibilityRole="checkbox" accessibilityState={{ checked: consentimiento }}>
             <View style={[styles.checkboxIcon, consentimiento && styles.checkboxIconActive]}>{consentimiento && <Text style={styles.checkboxCheck}>✓</Text>}</View>
@@ -363,9 +398,13 @@ export default function App() {
                   {mediciones.imc} <Text style={styles.unit}>kg/m²</Text>
                 </Text>
               </View>
-              <View>
+              <View style={{marginRight: 15}}>
                 <Text style={styles.label}>GRASA</Text>
                 <Text style={styles.metric}>{mediciones.grasa} <Text style={styles.unit}>%</Text></Text>
+              </View>
+              <View>
+                <Text style={styles.label}>MASA MUSCULAR</Text>
+                <Text style={styles.metric}>{mediciones.masaMuscular} <Text style={styles.unit}>kg</Text></Text>
               </View>
             </View>
           </View>
@@ -398,6 +437,14 @@ export default function App() {
         <View style={styles.sliderHeader}><Text style={styles.label}>DURACIÓN DE LA SESIÓN</Text><Text style={styles.sliderValue}> — {duracion} MIN</Text></View>
         <Slider style={{ width: '100%', height: 40, marginTop: 10 }} minimumValue={30} maximumValue={120} step={10} value={duracion} onValueChange={(valor) => setDuracion(valor)} minimumTrackTintColor="#ea580c" maximumTrackTintColor="#e2e8f0" thumbTintColor="#ea580c"/>
         <View style={styles.sliderLabels}><Text style={styles.sliderLabelText}>30 min</Text><Text style={styles.sliderLabelText}>2 h</Text></View>
+        <Text style={[styles.label, { marginTop: 30, marginBottom: 15 }]}>DÍAS A LA SEMANA QUE PUEDES ENTRENAR</Text>
+        <View style={styles.chipContainer}>
+          {[1, 2, 3, 4, 5, 6, 7].map((d) => (
+            <TouchableOpacity key={d} style={[styles.chip, diasSemana === d && styles.chipActive]} onPress={() => setDiasSemana(d)} accessibilityRole="button" accessibilityLabel={`${d} ${d === 1 ? 'día' : 'días'} a la semana`} accessibilityState={{ selected: diasSemana === d }}>
+              <Text style={[styles.chipText, diasSemana === d && styles.chipTextActive]}>{d}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
     );
   };
@@ -424,6 +471,8 @@ export default function App() {
             return (<TouchableOpacity key={cond} style={[styles.chip, isSelected && styles.chipActive]} onPress={() => toggleCondicion(cond)}><Text style={[styles.chipText, isSelected && styles.chipTextActive]}>{cond}</Text></TouchableOpacity>);
           })}
         </View>
+        <Text style={[styles.label, { marginTop: 30, marginBottom: 15 }]}>LESIONES PREVIAS (OPCIONAL)</Text>
+        <TextInput style={styles.input} value={lesionesPrevias} multiline maxLength={500} accessibilityLabel="Lesiones previas" placeholder="Por ejemplo: esguince de tobillo en 2025" onChangeText={setLesionesPrevias} />
       </View>
     );
   };

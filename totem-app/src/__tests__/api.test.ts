@@ -31,7 +31,7 @@ describe('llamadas al backend', () => {
     global.fetch = responder(200, { status: 'success', cambios: [] }) as unknown as typeof fetch;
 
     // Act
-    await actualizarSocio(' 2023-1234a ', { edad: 22 });
+    await actualizarSocio(' 2023-1234a ', { plan_membresia: 'Plan Premium' });
 
     // Assert
     const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
@@ -65,13 +65,15 @@ describe('interpretación de errores', () => {
 
   test('un detail con código de negocio expone code, mensaje y coincidencias', async () => {
     // Arrange
-    const coincidencias = [{ nombre: 'Ana Pérez', carrera: 'Civil', matricula: '******34A' }];
+    const coincidencias = [{ nombre: 'Ana Pérez', plan_membresia: 'Plan Estudiante', matricula: '******34A' }];
     global.fetch = responder(409, {
       detail: { code: 'posible_duplicado', message: 'Ya existe un socio', coincidencias },
     }) as unknown as typeof fetch;
 
     // Act
-    const resultado = await registrarSocio({ matricula: '20231234A', nombre: 'Ana', carrera: 'Civil', edad: 21 });
+    const resultado = await registrarSocio({
+      matricula: '20231234A', nombre: 'Ana', apellido: 'Pérez', fecha_nacimiento: '2002-03-15', plan_membresia: 'Plan Estudiante',
+    });
 
     // Assert
     expect(resultado).toEqual({ ok: false, status: 409, code: 'posible_duplicado', mensaje: 'Ya existe un socio', coincidencias });
