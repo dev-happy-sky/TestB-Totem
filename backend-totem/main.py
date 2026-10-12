@@ -22,10 +22,14 @@ from sqlalchemy.orm import sessionmaker, Session
 from migraciones import agregar_columnas_faltantes
 from models import AuditLog, Base, PersonalGimnasio, SesionTotem
 from persistencia import (
-    SesionCerrada, SinAlerta, cargar_sesion, guardar_evaluacion, listar_historial_socio, listar_sesiones,
-    registrar_auditoria, revisar_alerta, serializar_sesion, validar_sesion,
+    PosibleDuplicado, SesionCerrada, SinAlerta, SocioExistente, actualizar_socio, buscar_socio, cargar_sesion,
+    guardar_evaluacion, listar_historial_socio, listar_sesiones, registrar_auditoria, registrar_socio,
+    rellenar_identidad, resumen_identificacion, revisar_alerta, serializar_sesion, validar_sesion,
 )
-from schemas import EvaluacionPayload, LoginPayload, ValidacionPayload
+from identidad import normalizar_matricula, matricula_valida, MENSAJE_MATRICULA
+from schemas import (
+    EvaluacionPayload, IdentificarPayload, LoginPayload, SocioActualizacion, SocioRegistro, ValidacionPayload,
+)
 
 app = FastAPI(title="API Tótem de Aptitud Física")
 logger = logging.getLogger("totem")
@@ -166,6 +170,15 @@ def migrar_evaluaciones_v2():
         db.close()
 
 
+def _rellenar_identidad_inicial():
+    db = SessionLocal()
+    try:
+        rellenar_identidad(db)
+    finally:
+        db.close()
+
+
+_rellenar_identidad_inicial()
 migrar_evaluaciones_v2()
 
 # Límite de intentos de login por IP+usuario (R.184): 5 fallos en 15 minutos.
@@ -177,6 +190,22 @@ def _bloqueado(clave: str) -> bool:
     ahora = time.time()
     _intentos[clave] = [t for t in _intentos.get(clave, []) if ahora - t < VENTANA_SEG]
     return len(_intentos[clave]) >= MAX_INTENTOS
+
+
+# Límite de consultas de identificación por IP (el tótem es público): evita recorrer matrículas ajenas.
+_consultas: dict = {}
+MAX_CONSULTAS, VENTANA_CONSULTAS_SEG = int(os.getenv("MAX_CONSULTAS_IDENTIDAD", "30")), 5 * 60
+
+
+def _consulta_permitida(ip: Optional[str]) -> bool:
+    ahora = time.time()
+    recientes = [t for t in _consultas.get(ip, []) if ahora - t < VENTANA_CONSULTAS_SEG]
+    if len(recientes) >= MAX_CONSULTAS:
+        _consultas[ip] = recientes
+        return False
+    recientes.append(ahora)
+    _consultas[ip] = recientes
+    return True
 
 
 def crear_token(username: str, rol: str, uid: str) -> str:
@@ -317,12 +346,61 @@ def _ip(request: Request) -> Optional[str]:
 
 
 # Historial de evaluaciones de un socio para comparar mediciones entre visitas (R.130, R.131)
-@app.get("/api/socios/{rut}/evaluaciones")
-def obtener_historial_socio(rut: str, request: Request, user: dict = Depends(requiere_rol(*ROLES_DASHBOARD)),
+@app.get("/api/socios/{matricula}/evaluaciones")
+def obtener_historial_socio(matricula: str, request: Request, user: dict = Depends(requiere_rol(*ROLES_DASHBOARD)),
                             db: Session = Depends(get_db)):
     registrar_acceso(db, "lectura_historial_socio", usuario=user["sub"], rol=user["rol"], recurso="/api/socios/*/evaluaciones",
                      ip=_ip(request), personal_id=_uuid_o_none(user.get("uid")))
-    return [serializar_sesion(s) for s in listar_historial_socio(db, rut)]
+    return [serializar_sesion(s) for s in listar_historial_socio(db, matricula)]
+
+
+# --- Identificación de socios desde el tótem (R.1-R.5, R.7, R.11) ---
+
+# Identifica por matrícula: si está registrado devuelve sus datos y si tiene una evaluación vigente; si no, indica
+# que debe registrarse. Solo devuelve datos básicos y fechas (nunca categorías ni datos de salud).
+@app.post("/api/socios/identificar", dependencies=[Depends(verificar_totem)])
+def identificar_socio(payload: IdentificarPayload, request: Request, db: Session = Depends(get_db)):
+    ip = _ip(request)
+    if not _consulta_permitida(ip):
+        registrar_acceso(db, "identificacion_bloqueada", recurso="/api/socios/identificar", ip=ip)
+        raise HTTPException(status_code=429, detail="Demasiadas consultas. Intenta en unos minutos.")
+    socio = buscar_socio(db, payload.matricula)
+    if not socio:
+        return {"registrado": False, "matricula": payload.matricula}
+    return {**resumen_identificacion(db, socio), "matricula": socio.matricula}
+
+
+# Registra a un socio nuevo (R.3). Si ya existe la matrícula responde 409; si hay otro socio con el mismo nombre,
+# responde 409 `posible_duplicado` y el tótem debe reenviar con `confirmar_duplicado` (R.11).
+@app.post("/api/socios", status_code=201, dependencies=[Depends(verificar_totem)])
+def crear_socio(payload: SocioRegistro, request: Request, db: Session = Depends(get_db)):
+    try:
+        socio = registrar_socio(db, payload)
+    except SocioExistente:
+        raise HTTPException(status_code=409, detail={"code": "matricula_registrada",
+                                                     "message": "Esa matrícula ya está registrada"})
+    except PosibleDuplicado as dup:
+        registrar_acceso(db, "posible_duplicado", recurso="/api/socios", ip=_ip(request))
+        raise HTTPException(status_code=409, detail={
+            "code": "posible_duplicado",
+            "message": "Ya existe un socio con ese nombre. Si eres una persona distinta, confirma el registro.",
+            "coincidencias": dup.coincidencias})
+    registrar_acceso(db, "socio_registrado", recurso=f"socio/{socio.id}", ip=_ip(request))
+    return {"status": "success", "socio": resumen_identificacion(db, socio)["socio"], "matricula": socio.matricula}
+
+
+# Actualiza datos personales desactualizados (R.5).
+@app.put("/api/socios/{matricula}", dependencies=[Depends(verificar_totem)])
+def modificar_socio(matricula: str, payload: SocioActualizacion, request: Request, db: Session = Depends(get_db)):
+    if not matricula_valida(matricula):
+        raise HTTPException(status_code=422, detail=MENSAJE_MATRICULA)
+    socio = buscar_socio(db, normalizar_matricula(matricula))
+    if not socio:
+        raise HTTPException(status_code=404, detail="Socio no encontrado")
+    cambios = actualizar_socio(db, socio, payload)
+    if cambios:
+        registrar_acceso(db, "socio_actualizado:" + ",".join(cambios), recurso=f"socio/{socio.id}", ip=_ip(request))
+    return {"status": "success", "cambios": cambios, "socio": resumen_identificacion(db, socio)["socio"]}
 
 
 # Decisión del encargado: confirmar/ajustar la categoría o derivar a evaluación médica (queda quién y cuándo, R.180)

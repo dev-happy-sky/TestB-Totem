@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import ValidacionAptitud from './ValidacionAptitud';
 import TendenciaSocio from './TendenciaSocio';
-import { FILTROS, alertaPendiente, estadoRevision, filtrarCola, ordenarCola } from '../lib/cola';
+import { FILTROS, alertaPendiente, describirOrigen, duracionEvaluacion, estadoRevision, filtrarCola, ordenarCola } from '../lib/cola';
 
 export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout }) {
   const [colaEstudiantes, setColaEstudiantes] = useState([]);
@@ -240,6 +240,12 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout })
                 <div>
                   <h1 className="text-2xl font-bold text-slate-800">{estudianteSeleccionado.nombre}</h1>
                   <p className="text-sm text-slate-500 font-mono mt-1">{estudianteSeleccionado.id} · {estudianteSeleccionado.edad} años · {estudianteSeleccionado.carrera}</p>
+                  {(describirOrigen(estudianteSeleccionado) || duracionEvaluacion(estudianteSeleccionado) !== null) && (
+                    <p className="text-xs text-slate-400 mt-1">
+                      {describirOrigen(estudianteSeleccionado)}
+                      {duracionEvaluacion(estudianteSeleccionado) !== null && `${describirOrigen(estudianteSeleccionado) ? ' · ' : ''}Duración: ${duracionEvaluacion(estudianteSeleccionado)} min`}
+                    </p>
+                  )}
                 </div>
               </div>
 

@@ -240,17 +240,17 @@ def test_historial_del_socio_incluye_solo_sus_evaluaciones_en_orden(client, payl
     _enviar(client, payload, totem_headers)
     payload["mediciones"]["peso"] = "78.5"
     _enviar(client, payload, totem_headers)
-    otro = {**payload, "estudiante": {**payload["estudiante"], "matricula": "99.999.999-9"}}
+    otro = {**payload, "estudiante": {**payload["estudiante"], "matricula": "20239999B"}}
     _enviar(client, otro, totem_headers)
 
     # Act
-    r = client.get("/api/socios/12.345.678-9/evaluaciones", headers=auth())
+    r = client.get("/api/socios/20231234A/evaluaciones", headers=auth())
 
     # Assert
     pesos = [e["mediciones"]["peso"] for e in r.json()]
     assert r.status_code == 200
     assert pesos == ["78.5", "80.0"]  # la más reciente primero
-    assert {e["id"] for e in r.json()} == {"12.345.678-9"}
+    assert {e["id"] for e in r.json()} == {"20231234A"}
 
 
 def test_historial_de_socio_sin_evaluaciones_es_lista_vacia(client, auth):
@@ -263,7 +263,7 @@ def test_historial_de_socio_sin_evaluaciones_es_lista_vacia(client, auth):
 
 def test_historial_de_socio_requiere_sesion(client):
     # Arrange / Act
-    r = client.get("/api/socios/12.345.678-9/evaluaciones")
+    r = client.get("/api/socios/20231234A/evaluaciones")
 
     # Assert
     assert r.status_code == 401

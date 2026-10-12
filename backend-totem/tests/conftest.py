@@ -29,7 +29,7 @@ def client():
 def payload():
     return {
         "consentimiento": True,
-        "estudiante": {"nombre": "Ana Pérez Soto", "matricula": "12.345.678-9", "edad": "30", "carrera": "Plan Full"},
+        "estudiante": {"nombre": "Ana Pérez Soto", "matricula": "20231234A", "edad": "30", "carrera": "Ingeniería Civil"},
         "mediciones": {"presionSys": 118, "presionDia": 78, "fcReposo": 70, "fcRecup": 100,
                        "peso": "70.5", "imc": "24.1", "grasa": "20.2", "vo2Max": "40.0"},
         "entrenamiento": {"objetivo": "Fuerza", "experiencia": "Intermedio", "duracion": 60},

@@ -1,4 +1,4 @@
-import { calcularTendencia, estadoRevision, evaluacionesPrevias, filtrarCola, ordenarCola } from '../cola';
+import { calcularTendencia, describirOrigen, duracionEvaluacion, estadoRevision, evaluacionesPrevias, filtrarCola, ordenarCola } from '../cola';
 
 const ev = (id, extra = {}) => ({
   idBaseDatos: `u${id}`, nombre: `Socio ${id}`, iaSugerida: 'A3', estado: 'pendiente', estadoRevision: 'pendiente',
@@ -177,5 +177,45 @@ describe('calcularTendencia (R.130, R.131)', () => {
 
     // Assert
     expect(tendencia.map((t) => t.clave)).toEqual(['presionSys']);
+  });
+});
+
+describe('duracionEvaluacion (R.16)', () => {
+  test('calcula los minutos entre inicio y término', () => {
+    // Arrange
+    const e = { inicioEvaluacion: '2026-10-01T10:00:00Z', finEvaluacion: '2026-10-01T10:04:40Z' };
+
+    // Act / Assert
+    expect(duracionEvaluacion(e)).toBe(5);
+  });
+
+  test.each([
+    [{}],
+    [{ inicioEvaluacion: '2026-10-01T10:00:00Z' }],
+    [{ inicioEvaluacion: 'no-es-fecha', finEvaluacion: '2026-10-01T10:00:00Z' }],
+    [{ inicioEvaluacion: '2026-10-01T10:05:00Z', finEvaluacion: '2026-10-01T10:00:00Z' }],
+  ])('devuelve null si faltan datos o el término es anterior al inicio (%j)', (e) => {
+    // Arrange / Act / Assert
+    expect(duracionEvaluacion(e)).toBeNull();
+  });
+
+  test('una evaluación sin diferencia de tiempo dura 0 minutos', () => {
+    // Arrange
+    const e = { inicioEvaluacion: '2026-10-01T10:00:00Z', finEvaluacion: '2026-10-01T10:00:00Z' };
+
+    // Act / Assert
+    expect(duracionEvaluacion(e)).toBe(0);
+  });
+});
+
+describe('describirOrigen (R.18, R.19)', () => {
+  test.each([
+    [{ totem: 'TOTEM-01', sucursal: 'Campus San Joaquín' }, 'Tótem TOTEM-01 · Campus San Joaquín'],
+    [{ totem: 'TOTEM-01', sucursal: null }, 'Tótem TOTEM-01'],
+    [{ totem: null, sucursal: 'Campus A' }, 'Campus A'],
+    [{}, ''],
+  ])('%j → %p', (e, esperado) => {
+    // Arrange / Act / Assert
+    expect(describirOrigen(e)).toBe(esperado);
   });
 });

@@ -1,5 +1,14 @@
+import datetime
 from typing import List, Literal, Optional
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from identidad import MENSAJE_MATRICULA, matricula_valida, normalizar_matricula
+
+
+def _validar_matricula(valor: str) -> str:
+    if not matricula_valida(valor):
+        raise ValueError(MENSAJE_MATRICULA)
+    return normalizar_matricula(valor)
 
 
 class Estudiante(BaseModel):
@@ -7,6 +16,8 @@ class Estudiante(BaseModel):
     matricula: str
     edad: str
     carrera: str
+
+    _matricula = field_validator("matricula")(lambda cls, v: _validar_matricula(v))
 
 
 class Mediciones(BaseModel):
@@ -38,6 +49,8 @@ class EvaluacionPayload(BaseModel):
     entrenamiento: Entrenamiento
     salud: Salud
     totem_serial: Optional[str] = None
+    totem_sucursal: Optional[str] = None
+    inicio: Optional[datetime.datetime] = None  # cuándo empezó la evaluación en el tótem (R.16)
 
 
 class ValidacionPayload(BaseModel):
@@ -57,3 +70,37 @@ class ValidacionPayload(BaseModel):
 class LoginPayload(BaseModel):
     username: str
     password: str
+
+
+class IdentificarPayload(BaseModel):
+    matricula: str
+
+    _matricula = field_validator("matricula")(lambda cls, v: _validar_matricula(v))
+
+
+class SocioRegistro(BaseModel):
+    """Alta de un socio nuevo desde el tótem (R.3)."""
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    matricula: str
+    nombre: str = Field(min_length=2, max_length=200)
+    carrera: str = Field(min_length=2, max_length=120)
+    edad: int = Field(ge=1, le=120)
+    confirmar_duplicado: bool = False
+
+    _matricula = field_validator("matricula")(lambda cls, v: _validar_matricula(v))
+
+
+class SocioActualizacion(BaseModel):
+    """Actualización de datos personales desactualizados (R.5)."""
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    nombre: Optional[str] = Field(default=None, min_length=2, max_length=200)
+    carrera: Optional[str] = Field(default=None, min_length=2, max_length=120)
+    edad: Optional[int] = Field(default=None, ge=1, le=120)
+
+    @model_validator(mode="after")
+    def _al_menos_un_dato(self):
+        if self.nombre is None and self.carrera is None and self.edad is None:
+            raise ValueError("Indica al menos un dato para actualizar")
+        return self
