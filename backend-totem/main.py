@@ -19,9 +19,11 @@ import jwt
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, Session
 
+from migraciones import agregar_columnas_faltantes
 from models import AuditLog, Base, PersonalGimnasio, SesionTotem
 from persistencia import (
-    cargar_sesion, guardar_evaluacion, listar_sesiones, registrar_auditoria, serializar_sesion, validar_sesion,
+    SesionCerrada, SinAlerta, cargar_sesion, guardar_evaluacion, listar_historial_socio, listar_sesiones,
+    registrar_auditoria, revisar_alerta, serializar_sesion, validar_sesion,
 )
 from schemas import EvaluacionPayload, LoginPayload, ValidacionPayload
 
@@ -46,6 +48,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # El esquema vive en models.py (socios, totems, personal_gimnasio, sesiones_totem, mediciones_corporales,
 # cuestionarios_objetivos, inferencias_ia, resultados_rutina, audit_logs).
 Base.metadata.create_all(bind=engine)
+agregar_columnas_faltantes(engine)  # tablas ya existentes en PostgreSQL: agrega las columnas nuevas
 
 
 def get_db():
@@ -309,7 +312,20 @@ def obtener_historial(request: Request, user: dict = Depends(requiere_rol(*ROLES
     return [serializar_sesion(s) for s in listar_sesiones(db)]
 
 
-# Guardar la validación del encargado (queda registrado quién y cuándo, R.180)
+def _ip(request: Request) -> Optional[str]:
+    return request.client.host if request.client else None
+
+
+# Historial de evaluaciones de un socio para comparar mediciones entre visitas (R.130, R.131)
+@app.get("/api/socios/{rut}/evaluaciones")
+def obtener_historial_socio(rut: str, request: Request, user: dict = Depends(requiere_rol(*ROLES_DASHBOARD)),
+                            db: Session = Depends(get_db)):
+    registrar_acceso(db, "lectura_historial_socio", usuario=user["sub"], rol=user["rol"], recurso="/api/socios/*/evaluaciones",
+                     ip=_ip(request), personal_id=_uuid_o_none(user.get("uid")))
+    return [serializar_sesion(s) for s in listar_historial_socio(db, rut)]
+
+
+# Decisión del encargado: confirmar/ajustar la categoría o derivar a evaluación médica (queda quién y cuándo, R.180)
 @app.put("/api/evaluaciones/{eval_id}")
 def guardar_validacion(eval_id: uuid.UUID, request: Request, payload: ValidacionPayload,
                        user: dict = Depends(requiere_rol(*ROLES_DASHBOARD)), db: Session = Depends(get_db)):
@@ -317,11 +333,32 @@ def guardar_validacion(eval_id: uuid.UUID, request: Request, payload: Validacion
     if not sesion:
         raise HTTPException(status_code=404, detail="Evaluación no encontrada")
     personal_id = _uuid_o_none(user.get("uid"))
-    validar_sesion(db, sesion, payload.nivel_final, personal_id=personal_id)
-    registrar_acceso(db, f"validacion:{payload.nivel_final}", usuario=user["sub"], rol=user["rol"],
-                     recurso=f"evaluacion/{eval_id}", ip=request.client.host if request.client else None,
-                     personal_id=personal_id, sesion_id=sesion.id)
-    return {"status": "success"}
+    try:
+        validar_sesion(db, sesion, payload.nivel_final, personal_id=personal_id, observaciones=payload.observaciones,
+                       derivar=payload.derivar, motivo=payload.motivo)
+    except SesionCerrada:
+        raise HTTPException(status_code=409, detail="La evaluación ya fue revisada o derivada")
+    accion = "derivacion" if payload.derivar else f"validacion:{payload.nivel_final}"
+    registrar_acceso(db, accion, usuario=user["sub"], rol=user["rol"], recurso=f"evaluacion/{eval_id}",
+                     ip=_ip(request), personal_id=personal_id, sesion_id=sesion.id)
+    return {"status": "success", "evaluacion": serializar_sesion(cargar_sesion(db, eval_id))}
+
+
+# Confirmar que una alerta fue revisada sin cerrar el caso (R.139, R.140)
+@app.post("/api/evaluaciones/{eval_id}/alerta/revisar")
+def revisar_alerta_endpoint(eval_id: uuid.UUID, request: Request, user: dict = Depends(requiere_rol(*ROLES_DASHBOARD)),
+                            db: Session = Depends(get_db)):
+    sesion = cargar_sesion(db, eval_id)
+    if not sesion:
+        raise HTTPException(status_code=404, detail="Evaluación no encontrada")
+    personal_id = _uuid_o_none(user.get("uid"))
+    try:
+        revisar_alerta(db, sesion, personal_id=personal_id)
+    except SinAlerta:
+        raise HTTPException(status_code=409, detail="La evaluación no tiene alertas")
+    registrar_acceso(db, "alerta_revisada", usuario=user["sub"], rol=user["rol"], recurso=f"evaluacion/{eval_id}",
+                     ip=_ip(request), personal_id=personal_id, sesion_id=sesion.id)
+    return {"status": "success", "evaluacion": serializar_sesion(cargar_sesion(db, eval_id))}
 
 
 # Guardar desde la app móvil y avisar por WebSocket

@@ -142,8 +142,12 @@ class InferenciaIA(Base):
     generado_en = Column(_ts(), default=_ahora, nullable=False)
     categoria_aptitud = Column(String(10), nullable=True)  # EXT: A1..A4
     alerta = Column(String(40), nullable=True)  # EXT
+    alerta_nivel = Column(String(10), nullable=True)  # EXT: "critica" | "riesgo" (R.125)
+    alerta_revisada_por = Column(Uuid, ForeignKey("personal_gimnasio.id"), nullable=True)  # EXT (R.140)
+    alerta_revisada_en = Column(_ts(), nullable=True)  # EXT (R.140)
 
     sesion = relationship("SesionTotem", back_populates="inferencia")
+    revisor_alerta = relationship("PersonalGimnasio", foreign_keys=[alerta_revisada_por])
 
 
 class ResultadoRutina(Base):
@@ -158,8 +162,10 @@ class ResultadoRutina(Base):
     observaciones = Column(Text, nullable=True)
     asignado_en = Column(_ts(), default=_ahora, nullable=False)
     nivel_final = Column(String(10), nullable=True)  # EXT: A1..A4
+    motivo_derivacion = Column(Text, nullable=True)  # EXT (R.107)
 
     sesion = relationship("SesionTotem", back_populates="resultado")
+    personal = relationship("PersonalGimnasio", foreign_keys=[personal_id])
 
 
 class AuditLog(Base):

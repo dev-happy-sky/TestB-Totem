@@ -1,5 +1,5 @@
-from typing import List, Optional
-from pydantic import BaseModel
+from typing import List, Literal, Optional
+from pydantic import BaseModel, Field, model_validator
 
 
 class Estudiante(BaseModel):
@@ -41,7 +41,17 @@ class EvaluacionPayload(BaseModel):
 
 
 class ValidacionPayload(BaseModel):
-    nivel_final: str
+    """Decisión del encargado: confirma/ajusta la categoría o deriva a evaluación médica externa."""
+    nivel_final: Literal["A1", "A2", "A3", "A4"]
+    observaciones: Optional[str] = Field(default=None, max_length=2000)
+    derivar: bool = False
+    motivo: Optional[str] = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def _motivo_obligatorio_al_derivar(self):
+        if self.derivar and not (self.motivo and self.motivo.strip()):
+            raise ValueError("Debes indicar el motivo de la derivación")
+        return self
 
 
 class LoginPayload(BaseModel):
