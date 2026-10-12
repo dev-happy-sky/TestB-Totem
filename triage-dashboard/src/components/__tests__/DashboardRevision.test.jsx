@@ -520,3 +520,220 @@ describe('validación de mediciones por el encargado', () => {
     expect(props.onSesionInvalida).toHaveBeenCalled();
   });
 });
+
+describe('sugerencia de IA: confianza, revisión y reglas (R.97, R.100, R.101, R.102, R.115)', () => {
+  const conIA = (extra = {}) => evaluacion(1, {
+    iaSugerida: 'A2', confianza: 0.85, versionModelo: 'reglas-v2', intensidad: 'Baja intensidad y supervisión del encargado',
+    requiereRevision: false, motivoRevision: null, reglasAplicadas: [], ...extra,
+  });
+
+  test('muestra la confianza real en lugar de un valor fijo', async () => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [conIA()] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.getByLabelText('Confianza de la sugerencia')).toHaveTextContent('85%');
+    expect(screen.queryByText(/70%/)).not.toBeInTheDocument();
+  });
+
+  test('si el servidor no informa la confianza muestra N/D', async () => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [conIA({ confianza: null })] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.getByLabelText('Confianza de la sugerencia')).toHaveTextContent('N/D');
+  });
+
+  test('muestra el nombre de la categoría y la intensidad recomendada', async () => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [conIA()] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.getByRole('heading', { name: 'Apto con precaución' })).toBeInTheDocument();
+    expect(screen.getByText('Intensidad recomendada: Baja intensidad y supervisión del encargado')).toBeInTheDocument();
+  });
+
+  test.each([
+    ['A1', 'Requiere evaluación médica'], ['A3', 'Apto con intensidad moderada'], ['A4', 'Apto'],
+  ])('la categoría %s se muestra como "%s"', async (categoria, nombre) => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [conIA({ iaSugerida: categoria })] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.getByRole('heading', { name: nombre })).toBeInTheDocument();
+  });
+
+  test('una sugerencia de baja confianza pide la revisión del encargado con el motivo', async () => {
+    // Arrange
+    const e = conIA({
+      confianza: 0.55, requiereRevision: true, alerta: 'REVISAR', alertaNivel: 'riesgo',
+      motivoRevision: 'Confianza baja (55%): falta la presión arterial',
+    });
+    mockApi({ 'GET /api/evaluaciones': { body: [e] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    const aviso = screen.getByRole('note');
+    expect(aviso).toHaveTextContent('Requiere tu revisión');
+    expect(aviso).toHaveTextContent('Confianza baja (55%): falta la presión arterial');
+    expect(screen.getByText('REVISAR')).toBeInTheDocument();
+  });
+
+  test('con confianza suficiente no aparece el aviso de revisión', async () => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [conIA()] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+  });
+
+  test('lista las reglas aplicadas con su severidad y valor, y la versión del modelo', async () => {
+    // Arrange
+    const e = conIA({
+      reglasAplicadas: [
+        { id: 'PRESION_SISTOLICA_FUERA_DE_RANGO', descripcion: 'Presión sistólica 135 mmHg: fuera del rango normal', severidad: 'precaucion', valor: 135 },
+        { id: 'CONDICION_DECLARADA', descripcion: 'Condición declarada: Asma', severidad: 'leve', valor: null },
+      ],
+    });
+    mockApi({ 'GET /api/evaluaciones': { body: [e] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.getByText('Reglas aplicadas (2)')).toBeInTheDocument();
+    expect(screen.getByText(/PRESION_SISTOLICA_FUERA_DE_RANGO/).closest('li')).toHaveTextContent('Precaución · valor 135');
+    expect(screen.getByText(/CONDICION_DECLARADA/).closest('li')).toHaveTextContent('Leve');
+    expect(screen.getByText(/Versión: reglas-v2/)).toBeInTheDocument();
+  });
+
+  test('sin reglas aplicadas no muestra el desplegable', async () => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [conIA()] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.queryByText(/Reglas aplicadas/)).not.toBeInTheDocument();
+  });
+});
+
+describe('comparación entre la IA y el encargado (R.110)', () => {
+  const cerrada = (n, ia, final, decision) => evaluacion(n, {
+    iaSugerida: ia, nivelFinal: final, estado: 'validado', estadoRevision: final === 'A1' && decision === 'derivada' ? 'derivada' : 'revisada',
+    decisionPersonal: decision, confianza: 0.9,
+  });
+
+  test('el KPI muestra el porcentaje de coincidencia en los casos cerrados', async () => {
+    // Arrange
+    const cola = [cerrada(1, 'A2', 'A2', 'confirmada'), cerrada(2, 'A3', 'A3', 'confirmada'), cerrada(3, 'A3', 'A1', 'modificada'), evaluacion(4)];
+    mockApi({ 'GET /api/evaluaciones': { body: cola }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    const kpi = screen.getByText('COINCIDENCIA IA').parentElement;
+    expect(kpi).toHaveTextContent('67%');
+    expect(kpi).toHaveTextContent('2 de 3 casos cerrados');
+  });
+
+  test('sin casos cerrados el KPI muestra guiones', async () => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [evaluacion(1)] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.getByText('COINCIDENCIA IA').parentElement).toHaveTextContent('--');
+  });
+
+  test('un caso cerrado explica qué sugirió la IA y qué decidió el encargado', async () => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [cerrada(1, 'A2', 'A1', 'modificada')] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    const texto = screen.getByTestId('comparacion-ia');
+    expect(texto).toHaveTextContent('la IA sugirió A2 (Apto con precaución)');
+    expect(texto).toHaveTextContent('el encargado dejó A1 (Requiere evaluación médica)');
+    expect(texto).toHaveTextContent('difieren');
+  });
+
+  test('cuando coinciden lo indica', async () => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [cerrada(1, 'A3', 'A3', 'confirmada')] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.getByTestId('comparacion-ia')).toHaveTextContent('coinciden');
+  });
+
+  test('un caso abierto no muestra comparación', async () => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [evaluacion(1)] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.queryByTestId('comparacion-ia')).not.toBeInTheDocument();
+  });
+
+  test('al cerrar un caso la comparación aparece con la respuesta del servidor', async () => {
+    // Arrange
+    const abierta = evaluacion(1, { iaSugerida: 'A3' });
+    mockApi({
+      'GET /api/evaluaciones': { body: [abierta] },
+      'GET /api/socios/.*': { body: [] },
+      'PUT /api/evaluaciones/uuid-1': { body: { status: 'success', evaluacion: cerrada(1, 'A3', 'A2', 'modificada') } },
+    });
+    const user = userEvent.setup();
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Act
+    await user.click(screen.getByRole('button', { name: /A2/ }));
+    await user.click(screen.getByRole('button', { name: /Confirmar cambio y cerrar caso/ }));
+
+    // Assert
+    expect(await screen.findByTestId('comparacion-ia')).toHaveTextContent('la IA sugirió A3');
+    expect(screen.getByText('COINCIDENCIA IA').parentElement).toHaveTextContent('0%');
+  });
+});

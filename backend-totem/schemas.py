@@ -26,14 +26,15 @@ class Estudiante(BaseModel):
 
 
 class Mediciones(BaseModel):
-    presionSys: int
-    presionDia: int
-    fcReposo: int
-    fcRecup: int
-    peso: str
-    imc: str
-    grasa: str
-    vo2Max: str
+    """Mediciones del tótem. Todas son opcionales: si un sensor falla, el motor lo trata como dato faltante (R.93)."""
+    presionSys: Optional[int] = None
+    presionDia: Optional[int] = None
+    fcReposo: Optional[int] = None
+    fcRecup: Optional[int] = None
+    peso: Optional[str] = None
+    imc: Optional[str] = None
+    grasa: Optional[str] = None
+    vo2Max: Optional[str] = None
     masaMuscular: Optional[str] = None
 
 
