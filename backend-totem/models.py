@@ -144,6 +144,9 @@ class InferenciaIA(Base):
     categoria_aptitud = Column(String(10), nullable=True)  # EXT: A1..A4
     alerta = Column(String(40), nullable=True)  # EXT
     alerta_nivel = Column(String(10), nullable=True)  # EXT: "critica" | "riesgo" (R.125)
+    reglas_aplicadas = Column(JSONType, nullable=True)  # EXT: reglas que dispararon la decisión (R.115)
+    requiere_revision = Column(Boolean, default=False)  # EXT: baja confianza o información insuficiente (R.102, R.113)
+    motivo_revision = Column(String(300), nullable=True)  # EXT
     alerta_revisada_por = Column(Uuid, ForeignKey("personal_gimnasio.id"), nullable=True)  # EXT (R.140)
     alerta_revisada_en = Column(_ts(), nullable=True)  # EXT (R.140)
 

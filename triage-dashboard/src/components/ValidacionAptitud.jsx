@@ -1,5 +1,6 @@
 "use client";
 import React, { useState } from 'react';
+import { compararConIA, nombreCategoria } from '../lib/ia';
 
 const NIVELES = [
   { id: 'A1', label: 'Riesgo', txt: 'text-red-600', borderActivo: 'border-red-600', bgActivo: 'bg-red-50' },
@@ -79,6 +80,13 @@ export default function ValidacionAptitud({ estudiante, onValidar }) {
             {estudiante.estadoRevision === 'derivada' ? 'Derivado a evaluación médica externa' : 'Evaluación revisada'}
             {estudiante.revisadoPor ? ` por ${estudiante.revisadoPor}` : ''}
           </p>
+          {compararConIA(estudiante) && (
+            <p className="text-sm text-slate-700 mt-2" data-testid="comparacion-ia">
+              <strong>IA vs encargado:</strong> la IA sugirió {compararConIA(estudiante).categoriaIA} ({nombreCategoria(compararConIA(estudiante).categoriaIA)});
+              el encargado dejó {compararConIA(estudiante).categoriaFinal} ({nombreCategoria(compararConIA(estudiante).categoriaFinal)})
+              {compararConIA(estudiante).coincide ? ' — coinciden' : ' — difieren'}.
+            </p>
+          )}
           {estudiante.motivoDerivacion && (
             <p className="text-sm text-slate-700 mt-2"><strong>Motivo:</strong> {estudiante.motivoDerivacion}</p>
           )}

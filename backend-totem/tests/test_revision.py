@@ -20,24 +20,24 @@ def _primera(client, headers):
 # ---------------------------------------------------------------- reglas de alerta (R.124, R.125, R.132)
 
 @pytest.mark.parametrize("salud, categoria, nivel", [
-    ({"sintomas": [], "condiciones": []}, "A3", None),
+    ({"sintomas": [], "condiciones": []}, "A4", None),
     ({"sintomas": ["Medicación permanente"], "condiciones": []}, "A2", "riesgo"),
     ({"sintomas": ["Lesión articular u ósea"], "condiciones": ["Asma"]}, "A2", "riesgo"),
-    ({"sintomas": ["Dolor de pecho al esforzarte"], "condiciones": []}, "A2", "critica"),
-    ({"sintomas": ["Mareos o pérdida de equilibrio"], "condiciones": []}, "A2", "critica"),
-    ({"sintomas": [], "condiciones": ["Problema cardíaco"]}, "A2", "critica"),
-    ({"sintomas": ["Medicación permanente"], "condiciones": ["Problema cardíaco"]}, "A2", "critica"),
+    ({"sintomas": ["Dolor de pecho al esforzarte"], "condiciones": []}, "A1", "critica"),
+    ({"sintomas": ["Mareos o pérdida de equilibrio"], "condiciones": []}, "A1", "critica"),
+    ({"sintomas": [], "condiciones": ["Problema cardíaco"]}, "A1", "critica"),
+    ({"sintomas": ["Medicación permanente"], "condiciones": ["Problema cardíaco"]}, "A1", "critica"),
 ])
 def test_evaluar_reglas_clasifica_el_nivel_de_alerta(payload, salud, categoria, nivel):
     # Arrange
     payload["salud"] = salud
 
     # Act
-    cat, alerta, _, nivel_alerta, _ = evaluar_reglas(EvaluacionPayload(**payload))
+    resultado = evaluar_reglas(EvaluacionPayload(**payload))
 
     # Assert
-    assert (cat, nivel_alerta) == (categoria, nivel)
-    assert (alerta == "DERIVAR") == (nivel is not None)
+    assert (resultado.categoria, resultado.nivel_alerta) == (categoria, nivel)
+    assert (resultado.alerta == "DERIVAR") == (nivel is not None)
 
 
 def test_evaluar_reglas_lista_los_factores_que_uso(payload):
@@ -45,10 +45,11 @@ def test_evaluar_reglas_lista_los_factores_que_uso(payload):
     payload["salud"] = {"sintomas": ["Medicación permanente"], "condiciones": ["Asma", "Problema cardíaco"]}
 
     # Act
-    *_, factores = evaluar_reglas(EvaluacionPayload(**payload))
+    resultado = evaluar_reglas(EvaluacionPayload(**payload))
 
     # Assert
-    assert factores == ["Síntoma declarado: Medicación permanente", "Condición crítica: Problema cardíaco"]
+    assert resultado.factores == (
+        "Síntoma declarado: Medicación permanente", "Condición declarada: Asma", "Condición crítica: Problema cardíaco")
 
 
 def test_dashboard_recibe_nivel_de_alerta_y_factores(client, payload, totem_headers, auth):
@@ -60,7 +61,8 @@ def test_dashboard_recibe_nivel_de_alerta_y_factores(client, payload, totem_head
 
     # Assert
     assert fila["alertaNivel"] == "critica" and fila["alertaRevisada"] is False
-    assert fila["factores"] == ["Síntoma declarado: Dolor de pecho al esforzarte"]
+    assert fila["factores"] == [
+        "Síntoma declarado: Dolor de pecho al esforzarte", "Condición declarada: Asma", "Condición declarada: Lesión de rodilla"]
     assert fila["estadoRevision"] == "pendiente" and fila["fecha"]
 
 

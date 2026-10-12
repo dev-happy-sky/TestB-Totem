@@ -1,0 +1,67 @@
+{
+  "version": "reglas-v2",
+  "estado_revision": "PROVISIONAL: rangos y reglas pendientes de revisión por un profesional en ciencias del ejercicio o salud (R.222). No es un dispositivo médico.",
+  "umbral_baja_confianza": 0.7,
+
+  "categorias": {
+    "A1": {"nombre": "Requiere evaluación médica", "intensidad": "No entrenar hasta contar con evaluación médica"},
+    "A2": {"nombre": "Apto con precaución", "intensidad": "Baja intensidad y supervisión del encargado"},
+    "A3": {"nombre": "Apto con intensidad moderada", "intensidad": "Intensidad moderada"},
+    "A4": {"nombre": "Apto", "intensidad": "Intensidad normal"}
+  },
+
+  "signos_vitales": {
+    "presion_sistolica": {
+      "etiqueta": "Presión sistólica", "unidad": "mmHg",
+      "validos": {"min": 50, "max": 300},
+      "precaucion_si": {"menor_que": 90, "mayor_o_igual_que": 130},
+      "critico_si": {"menor_que": 80, "mayor_o_igual_que": 180},
+      "genera_alerta": true
+    },
+    "presion_diastolica": {
+      "etiqueta": "Presión diastólica", "unidad": "mmHg",
+      "validos": {"min": 30, "max": 200},
+      "precaucion_si": {"menor_que": 60, "mayor_o_igual_que": 85},
+      "critico_si": {"menor_que": 50, "mayor_o_igual_que": 120},
+      "genera_alerta": true
+    },
+    "fc_reposo": {
+      "etiqueta": "Frecuencia cardíaca en reposo", "unidad": "lpm",
+      "nota": "Precaución si FC > 100 o < 60 (se usa 101 porque la FC se mide en números enteros); crítico si FC > 120 o < 40.",
+      "validos": {"min": 20, "max": 250},
+      "precaucion_si": {"menor_que": 60, "mayor_o_igual_que": 101},
+      "critico_si": {"menor_que": 40, "mayor_o_igual_que": 121},
+      "genera_alerta": true
+    },
+    "imc": {
+      "etiqueta": "IMC", "unidad": "kg/m²",
+      "nota": "Mismo rango que resalta el dashboard. No genera alerta; si se considera demasiado estricto, bajar su severidad aquí.",
+      "validos": {"min": 10, "max": 80},
+      "precaucion_si": {"menor_que": 18.5, "mayor_o_igual_que": 25},
+      "critico_si": {},
+      "genera_alerta": false
+    }
+  },
+
+  "cuestionario": {
+    "sintomas_criticos": ["Dolor de pecho al esforzarte", "Mareos o pérdida de equilibrio"],
+    "condiciones_criticas": ["Problema cardíaco"],
+    "nota": "Cualquier otro síntoma declarado es 'precaución' y genera alerta; cualquier otra condición o lesión declarada es 'leve' (categoría A3)."
+  },
+
+  "consistencia": {
+    "antecedente_hipertension": "Hipertensión",
+    "presion_elevada_sin_antecedente": {"sistolica": 140, "diastolica": 90}
+  },
+
+  "confianza": {
+    "nota": "La confianza de las reglas mide la calidad de los datos, no una probabilidad clínica: parte de 1.0 y descuenta por datos faltantes, mediciones imposibles e inconsistencias.",
+    "base": 1.0,
+    "falta_presion": 0.2,
+    "falta_fc": 0.2,
+    "falta_imc": 0.05,
+    "medicion_invalida": 0.2,
+    "inconsistencia": 0.15,
+    "minimo": 0.05
+  }
+}

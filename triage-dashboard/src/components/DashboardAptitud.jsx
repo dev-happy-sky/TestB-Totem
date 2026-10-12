@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import ValidacionAptitud from './ValidacionAptitud';
 import TendenciaSocio from './TendenciaSocio';
+import { ETIQUETA_SEVERIDAD, coincidenciaIA, nivelConfianza, nombreCategoria, porcentajeConfianza } from '../lib/ia';
 import { describirContacto, etiquetaDias, horaLocal } from '../lib/formato';
 import { FILTROS, alertaPendiente, describirOrigen, duracionEvaluacion, estadoRevision, filtrarCola, ordenarCola } from '../lib/cola';
 
@@ -144,6 +145,7 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout })
   const kpiValidados = colaEstudiantes.filter(e => estadoRevision(e) !== 'pendiente').length;
   const kpiDerivados = colaEstudiantes.filter(e => e.nivelFinal === 'A1').length;
   const kpiAlertas = colaEstudiantes.filter(alertaPendiente).length;
+  const coincidencia = coincidenciaIA(colaEstudiantes);
   const contarFiltro = (id) => filtrarCola(colaEstudiantes, id).length;
 
   const countA = (nivel) => colaEstudiantes.filter(e => (e.nivelFinal || e.iaSugerida) === nivel).length;
@@ -160,11 +162,14 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout })
           { l: 'POR VALIDAR', v: kpiPendientes, c: 'text-slate-800' },
           { l: 'VALIDADOS', v: kpiValidados, c: 'text-green-500' }, 
           { l: 'RIESGO ALTO (A1)', v: kpiDerivados, c: 'text-red-500' }, 
-          { l: 'ALERTAS PENDIENTES', v: kpiAlertas, c: 'text-orange-500' }
+          { l: 'ALERTAS PENDIENTES', v: kpiAlertas, c: 'text-orange-500' },
+          { l: 'COINCIDENCIA IA', v: coincidencia.porcentaje === null ? '--' : `${coincidencia.porcentaje}%`, c: 'text-slate-800',
+            s: `${coincidencia.coinciden} de ${coincidencia.total} casos cerrados` }
         ].map((kpi, i) => (
           <div key={i} className="bg-white rounded-lg p-4 shadow-sm flex-1 border border-slate-100">
             <span className="text-xs font-semibold text-slate-400 block mb-1">{kpi.l}</span>
             <span className={`text-2xl font-bold ${kpi.c}`}>{kpi.v}</span>
+            {kpi.s && <span className="text-[10px] text-slate-400 block">{kpi.s}</span>}
           </div>
         ))}
       </div>
@@ -259,22 +264,32 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout })
                 </div>
               </div>
 
-              <div className={`${estudianteSeleccionado.iaSugerida === 'A2' ? 'bg-orange-50 border-orange-200' : 'bg-yellow-50 border-yellow-200'} rounded-xl p-5 border mb-6`}>
+              <div className={`${estudianteSeleccionado.iaSugerida === 'A1' ? 'bg-red-50 border-red-200' : estudianteSeleccionado.iaSugerida === 'A2' ? 'bg-orange-50 border-orange-200' : estudianteSeleccionado.iaSugerida === 'A4' ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'} rounded-xl p-5 border mb-6`}>
                  <div className="flex justify-between items-center mb-3">
-                   <span className={`text-xs font-bold uppercase tracking-wider ${estudianteSeleccionado.iaSugerida === 'A2' ? 'text-orange-800' : 'text-yellow-800'}`}>Clasificación Inicial IA</span>
-                   <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
-                     CONFIANZA <div className={`w-16 h-1.5 rounded-full ${estudianteSeleccionado.iaSugerida === 'A2' ? 'bg-orange-500' : 'bg-red-500'}`}></div> 70%
+                   <span className="text-xs font-bold uppercase tracking-wider text-slate-700">Clasificación Inicial IA</span>
+                   <div className="flex items-center gap-2 text-xs font-bold text-slate-600" aria-label="Confianza de la sugerencia">
+                     CONFIANZA
+                     <div className="w-16 h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                       <div className={`h-full ${nivelConfianza(estudianteSeleccionado.confianza) === 'baja' ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${porcentajeConfianza(estudianteSeleccionado.confianza) ?? 0}%` }}></div>
+                     </div>
+                     {porcentajeConfianza(estudianteSeleccionado.confianza) === null ? 'N/D' : `${porcentajeConfianza(estudianteSeleccionado.confianza)}%`}
                    </div>
                  </div>
                  <div className="flex items-center gap-3 mb-2">
-                    <div className={`w-12 h-12 text-white font-bold text-xl rounded-xl flex items-center justify-center ${estudianteSeleccionado.iaSugerida === 'A2' ? 'bg-orange-500' : 'bg-yellow-500'}`}>
+                    <div className={`w-12 h-12 text-white font-bold text-xl rounded-xl flex items-center justify-center ${estudianteSeleccionado.iaSugerida === 'A1' ? 'bg-red-500' : estudianteSeleccionado.iaSugerida === 'A2' ? 'bg-orange-500' : estudianteSeleccionado.iaSugerida === 'A4' ? 'bg-green-500' : 'bg-yellow-500'}`}>
                       {estudianteSeleccionado.iaSugerida}
                     </div>
                     <div>
-                      <h3 className="text-lg font-bold text-slate-800">{estudianteSeleccionado.iaSugerida === 'A2' ? 'Precaución' : 'Apto moderado'}</h3>
-                      <p className="text-sm text-slate-600">Sugerencia previa a validación profesional</p>
+                      <h3 className="text-lg font-bold text-slate-800">{nombreCategoria(estudianteSeleccionado.iaSugerida)}</h3>
+                      <p className="text-sm text-slate-600">{estudianteSeleccionado.intensidad ? `Intensidad recomendada: ${estudianteSeleccionado.intensidad}` : 'Sugerencia previa a validación profesional'}</p>
                     </div>
                  </div>
+                 {estudianteSeleccionado.requiereRevision && (
+                   <div role="note" className="bg-amber-50 border border-amber-200 text-amber-900 text-sm p-3 rounded-lg mt-3">
+                     <p className="font-bold">Requiere tu revisión</p>
+                     <p>{estudianteSeleccionado.motivoRevision || 'La sugerencia tiene baja confianza.'}</p>
+                   </div>
+                 )}
                  {estudianteSeleccionado.alerta && (
                    <div role="region" aria-label="Alerta" className={`${estudianteSeleccionado.alertaNivel === 'critica' ? 'bg-red-100 border border-red-300 text-red-800' : 'bg-red-50 text-red-700'} text-sm p-3 rounded-lg mt-4`}>
                      <div className="flex items-center justify-between gap-3">
@@ -303,7 +318,19 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout })
                 ) : (
                   <p className="text-sm text-slate-400">No se detectaron factores de riesgo.</p>
                 )}
-                <p className="text-xs text-slate-400 mt-2">Regla provisional: solo considera síntomas declarados y condiciones críticas, no los signos vitales.</p>
+                {estudianteSeleccionado.reglasAplicadas?.length > 0 && (
+                  <details className="mt-3">
+                    <summary className="text-xs font-semibold text-slate-500 cursor-pointer">Reglas aplicadas ({estudianteSeleccionado.reglasAplicadas.length})</summary>
+                    <ul className="mt-2 text-xs text-slate-600 space-y-1">
+                      {estudianteSeleccionado.reglasAplicadas.map((r) => (
+                        <li key={r.id + (r.descripcion || '')}><span className="font-mono">{r.id}</span> · {ETIQUETA_SEVERIDAD[r.severidad] || r.severidad}{r.valor !== null && r.valor !== undefined ? ` · valor ${r.valor}` : ''}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                <p className="text-xs text-slate-400 mt-2">
+                  {estudianteSeleccionado.versionModelo ? `Versión: ${estudianteSeleccionado.versionModelo}. ` : ''}Reglas provisionales, pendientes de revisión por un profesional.
+                </p>
               </div>
 
               <div className="mb-6">
