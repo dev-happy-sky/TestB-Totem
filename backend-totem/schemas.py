@@ -1,5 +1,5 @@
 import datetime
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from identidad import (
@@ -45,6 +45,25 @@ class Entrenamiento(BaseModel):
     diasSemana: Optional[int] = Field(default=None, ge=1, le=7)
 
 
+SENSORES = ("tensiometro", "banda_pecho", "balanza", "prueba_esfuerzo")
+CODIGOS_ERROR = ("desconectado", "timeout", "movimiento", "lectura_invalida", "error")
+
+
+class Dispositivo(BaseModel):
+    """Sensor que tomó las mediciones de un grupo (R.59) y su estado de calibración (R.60)."""
+    id: str = Field(min_length=1, max_length=80)
+    calibracion: Literal["vigente", "vencida", "desconocida"] = "desconocida"
+    capturado_en: Optional[datetime.datetime] = None   # cuándo se tomó esa medición (R.58)
+
+
+class ErrorMedicion(BaseModel):
+    """Problema ocurrido durante una medición (R.65): sensor desconectado, lectura inválida, etc."""
+    sensor: Literal["tensiometro", "banda_pecho", "balanza", "prueba_esfuerzo"]
+    codigo: Literal["desconectado", "timeout", "movimiento", "lectura_invalida", "error"]
+    mensaje: str = Field(max_length=200)
+    ocurrido_en: Optional[datetime.datetime] = None
+
+
 class Salud(BaseModel):
     sintomas: List[str]
     condiciones: List[str]
@@ -57,9 +76,20 @@ class EvaluacionPayload(BaseModel):
     mediciones: Mediciones
     entrenamiento: Entrenamiento
     salud: Salud
+    dispositivos: Dict[str, Dispositivo] = Field(default_factory=dict)
+    errores_medicion: List[ErrorMedicion] = Field(default_factory=list, max_length=50)
     totem_serial: Optional[str] = None
     totem_sucursal: Optional[str] = None
     inicio: Optional[datetime.datetime] = None  # cuándo empezó la evaluación en el tótem (R.16)
+
+
+    @field_validator("dispositivos")
+    @classmethod
+    def _sensores_conocidos(cls, valor):
+        desconocidos = [clave for clave in valor if clave not in SENSORES]
+        if desconocidos:
+            raise ValueError(f"Sensor desconocido: {', '.join(desconocidos)}")
+        return valor
 
 
 class ValidacionPayload(BaseModel):

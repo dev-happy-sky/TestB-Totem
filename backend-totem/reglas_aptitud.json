@@ -10,6 +10,10 @@
     "A4": {"nombre": "Apto", "intensidad": "Intensidad normal"}
   },
 
+  "dispositivos": {
+    "tensiometro": "Tensiómetro", "banda_pecho": "Banda de pecho", "balanza": "Balanza", "prueba_esfuerzo": "Prueba de esfuerzo"
+  },
+
   "signos_vitales": {
     "presion_sistolica": {
       "etiqueta": "Presión sistólica", "unidad": "mmHg",
@@ -55,13 +59,14 @@
   },
 
   "confianza": {
-    "nota": "La confianza de las reglas mide la calidad de los datos, no una probabilidad clínica: parte de 1.0 y descuenta por datos faltantes, mediciones imposibles e inconsistencias.",
+    "nota": "La confianza de las reglas mide la calidad de los datos, no una probabilidad clínica: parte de 1.0 y descuenta por datos faltantes, mediciones imposibles, inconsistencias y dispositivos con la calibración vencida.",
     "base": 1.0,
     "falta_presion": 0.2,
     "falta_fc": 0.2,
     "falta_imc": 0.05,
     "medicion_invalida": 0.2,
     "inconsistencia": 0.15,
+    "calibracion_vencida": 0.1,
     "minimo": 0.05
   }
 }
