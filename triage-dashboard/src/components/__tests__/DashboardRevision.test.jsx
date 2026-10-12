@@ -298,3 +298,33 @@ describe('historial y tendencia del socio (R.130, R.131)', () => {
     expect(screen.getAllByText('Socio 1').length).toBeGreaterThan(0);
   });
 });
+
+describe('origen y duración de la evaluación (R.16, R.18, R.19)', () => {
+  test('muestra el tótem, la sucursal y cuánto duró la evaluación', async () => {
+    // Arrange
+    const e = evaluacion(1, {
+      totem: 'TOTEM-GIM-01', sucursal: 'Campus San Joaquín',
+      inicioEvaluacion: '2026-10-01T10:00:00Z', finEvaluacion: '2026-10-01T10:04:00Z',
+    });
+    mockApi({ 'GET /api/evaluaciones': { body: [e] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+
+    // Assert
+    expect(await screen.findByText('Tótem TOTEM-GIM-01 · Campus San Joaquín · Duración: 4 min')).toBeInTheDocument();
+  });
+
+  test('si no hay datos de origen ni de tiempo no muestra esa línea', async () => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [evaluacion(1)] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.queryByText(/Duración:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Tótem /)).not.toBeInTheDocument();
+  });
+});

@@ -30,13 +30,15 @@ class Socio(Base):
     __tablename__ = "socios"
 
     id = Column(Uuid, primary_key=True, default=_uuid)
-    rut = Column(String(20), unique=True, nullable=False)
+    matricula = Column(String(20), unique=True, nullable=True)  # EXT: identificador del socio (normalizado)
+    rut = Column(String(20), unique=True, nullable=True)  # opcional: el gimnasio universitario identifica por matrícula
     nombre = Column(String(100), nullable=False)
     apellido = Column(String(100), nullable=False, default="")
     fecha_nacimiento = Column(Date, nullable=True)  # EXT: nullable, el tótem hoy solo envía la edad
     edad_declarada = Column(Integer, nullable=True)  # EXT
     telefono = Column(String(30), nullable=True)
     plan_membresia = Column(String(80), nullable=True)
+    carrera = Column(String(120), nullable=True)  # EXT
     created_at = Column(_ts(), default=_ahora, nullable=False)
 
     sesiones = relationship("SesionTotem", back_populates="socio")
