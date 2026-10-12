@@ -2,7 +2,9 @@ import datetime
 from typing import List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from identidad import MENSAJE_MATRICULA, matricula_valida, normalizar_matricula
+from identidad import (
+    MENSAJE_MATRICULA, fecha_nacimiento_valida, matricula_valida, normalizar_matricula, telefono_valido,
+)
 
 
 def _validar_matricula(valor: str) -> str:
@@ -12,10 +14,13 @@ def _validar_matricula(valor: str) -> str:
 
 
 class Estudiante(BaseModel):
-    nombre: str
+    """Datos del socio que acompañan a la evaluación (solo se usan si el socio aún no existe)."""
     matricula: str
-    edad: str
-    carrera: str
+    nombre: str
+    apellido: str = ""
+    fecha_nacimiento: Optional[datetime.date] = None
+    telefono: Optional[str] = None
+    plan_membresia: Optional[str] = None
 
     _matricula = field_validator("matricula")(lambda cls, v: _validar_matricula(v))
 
@@ -29,17 +34,20 @@ class Mediciones(BaseModel):
     imc: str
     grasa: str
     vo2Max: str
+    masaMuscular: Optional[str] = None
 
 
 class Entrenamiento(BaseModel):
     objetivo: str
     experiencia: str
     duracion: int
+    diasSemana: Optional[int] = Field(default=None, ge=1, le=7)
 
 
 class Salud(BaseModel):
     sintomas: List[str]
     condiciones: List[str]
+    lesionesPrevias: Optional[str] = Field(default=None, max_length=500)
 
 
 class EvaluacionPayload(BaseModel):
@@ -78,29 +86,54 @@ class IdentificarPayload(BaseModel):
     _matricula = field_validator("matricula")(lambda cls, v: _validar_matricula(v))
 
 
+def _validar_fecha_nacimiento(valor):
+    if valor is not None and not fecha_nacimiento_valida(valor, datetime.date.today()):
+        raise ValueError("Fecha de nacimiento inválida")
+    return valor
+
+
+def _validar_telefono(valor):
+    if valor is not None and valor.strip() and not telefono_valido(valor):
+        raise ValueError("Teléfono inválido: usa solo números, espacios, + o guiones (6 a 29 caracteres)")
+    return valor
+
+
 class SocioRegistro(BaseModel):
-    """Alta de un socio nuevo desde el tótem (R.3)."""
+    """Alta de un socio nuevo desde el tótem (R.3). Campos de la tabla `socios`."""
     model_config = ConfigDict(str_strip_whitespace=True)
 
     matricula: str
-    nombre: str = Field(min_length=2, max_length=200)
-    carrera: str = Field(min_length=2, max_length=120)
-    edad: int = Field(ge=1, le=120)
+    nombre: str = Field(min_length=2, max_length=100)
+    apellido: str = Field(min_length=2, max_length=100)
+    fecha_nacimiento: datetime.date
+    telefono: Optional[str] = None
+    plan_membresia: str = Field(min_length=2, max_length=80)
     confirmar_duplicado: bool = False
 
     _matricula = field_validator("matricula")(lambda cls, v: _validar_matricula(v))
+    _fecha = field_validator("fecha_nacimiento")(lambda cls, v: _validar_fecha_nacimiento(v))
+    _telefono = field_validator("telefono")(lambda cls, v: _validar_telefono(v))
 
 
 class SocioActualizacion(BaseModel):
-    """Actualización de datos personales desactualizados (R.5)."""
+    """Actualización de datos personales desactualizados (R.5). Un teléfono vacío lo borra."""
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    nombre: Optional[str] = Field(default=None, min_length=2, max_length=200)
-    carrera: Optional[str] = Field(default=None, min_length=2, max_length=120)
-    edad: Optional[int] = Field(default=None, ge=1, le=120)
+    nombre: Optional[str] = Field(default=None, min_length=2, max_length=100)
+    apellido: Optional[str] = Field(default=None, min_length=2, max_length=100)
+    fecha_nacimiento: Optional[datetime.date] = None
+    telefono: Optional[str] = None
+    plan_membresia: Optional[str] = Field(default=None, min_length=2, max_length=80)
+
+    _fecha = field_validator("fecha_nacimiento")(lambda cls, v: _validar_fecha_nacimiento(v))
+    _telefono = field_validator("telefono")(lambda cls, v: _validar_telefono(v))
 
     @model_validator(mode="after")
     def _al_menos_un_dato(self):
-        if self.nombre is None and self.carrera is None and self.edad is None:
+        if all(getattr(self, c) is None for c in ("nombre", "apellido", "fecha_nacimiento", "telefono", "plan_membresia")):
             raise ValueError("Indica al menos un dato para actualizar")
         return self
+
+
+class ValidarMedicionesPayload(BaseModel):
+    validado: bool = True

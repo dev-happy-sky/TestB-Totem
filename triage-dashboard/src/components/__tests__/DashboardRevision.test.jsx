@@ -9,8 +9,13 @@ const evaluacion = (n, extra = {}) => ({
   objetivo: 'Fuerza', iaSugerida: 'A3', alerta: null, alertaNivel: null, alertaRevisada: false, factores: [],
   estado: 'pendiente', estadoRevision: 'pendiente', nivelFinal: null, observaciones: null, motivoDerivacion: null,
   revisadoPor: null, tiempoEspera: 'Registrado', fecha: `2026-10-0${n}T10:00:00`,
-  mediciones: { presionSys: 118, presionDia: 78, fcReposo: 70, fcRecup: 100, peso: '70.0', imc: '24.0', grasa: '20.0', vo2Max: '40.0' },
-  salud: { sintomas: [], condiciones: [] },
+  apellido: 'Pérez', fechaNacimiento: '2002-03-15', telefono: '+56 9 1234 5678', planMembresia: 'Plan Estudiante',
+  entrenamiento: { objetivo: 'Fuerza', experiencia: 'Intermedio', diasSemana: 3, duracion: 60 },
+  mediciones: {
+    presionSys: 118, presionDia: 78, fcReposo: 70, fcRecup: 100, peso: '70.0', imc: '24.0', grasa: '20.0', vo2Max: '40.0',
+    masaMuscular: '30.5', capturadoEn: '2026-10-01T10:00:00', validado: false,
+  },
+  salud: { sintomas: [], condiciones: [], lesionesPrevias: null, antecedentesCronicos: false },
   ...extra,
 });
 
@@ -326,5 +331,192 @@ describe('origen y duración de la evaluación (R.16, R.18, R.19)', () => {
     // Assert
     expect(screen.queryByText(/Duración:/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Tótem /)).not.toBeInTheDocument();
+  });
+});
+
+describe('campos del modelo de datos', () => {
+  test('muestra los datos del socio: matrícula, edad, plan, fecha de nacimiento y teléfono', async () => {
+    // Arrange
+    const e = evaluacion(1, { id: '20231234A', edad: '24' });
+    mockApi({ 'GET /api/evaluaciones': { body: [e] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+
+    // Assert
+    expect(await screen.findByText('20231234A · 24 años · Plan Estudiante')).toBeInTheDocument();
+    expect(screen.getByText('Nacimiento: 15/03/2002 · Tel. +56 9 1234 5678')).toBeInTheDocument();
+  });
+
+  test('la lista muestra el plan de membresía junto al objetivo', async () => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [evaluacion(1)] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.getByText('Fuerza · Plan Estudiante')).toBeInTheDocument();
+  });
+
+  test('muestra peso y masa muscular además del resto de las mediciones', async () => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [evaluacion(1)] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    for (const [etiqueta, valor] of [['PESO', '70.0'], ['MASA MUSCULAR', '30.5'], ['GRASA', '20.0'], ['IMC', '24.0'], ['VO₂ MÁX', '40.0']]) {
+      expect(screen.getByText(etiqueta).nextSibling).toHaveTextContent(valor);
+    }
+  });
+
+  test('las mediciones faltantes se muestran como guiones', async () => {
+    // Arrange
+    const sinDatos = evaluacion(1, { mediciones: { presionSys: 118, presionDia: 78 } });
+    mockApi({ 'GET /api/evaluaciones': { body: [sinDatos] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.getByText('MASA MUSCULAR').nextSibling).toHaveTextContent('--');
+    expect(screen.getByText('PESO').nextSibling).toHaveTextContent('--');
+  });
+
+  test('muestra los objetivos y las respuestas del cuestionario', async () => {
+    // Arrange
+    const e = evaluacion(1, { salud: { sintomas: [], condiciones: ['Asma'], lesionesPrevias: 'Esguince de tobillo', antecedentesCronicos: true } });
+    mockApi({ 'GET /api/evaluaciones': { body: [e] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    const valorDe = (etiqueta) => screen.getByText(etiqueta).nextSibling.textContent;
+    expect(valorDe('Objetivo principal')).toBe('Fuerza');
+    expect(valorDe('Nivel de experiencia')).toBe('Intermedio');
+    expect(valorDe('Días disponibles por semana')).toBe('3 días');
+    expect(valorDe('Antecedentes crónicos')).toBe('Sí');
+    expect(valorDe('Lesiones previas')).toBe('Esguince de tobillo');
+  });
+
+  test('sin lesiones ni días indicados lo dice', async () => {
+    // Arrange
+    const e = evaluacion(1, { entrenamiento: { objetivo: 'Cardio', experiencia: 'Principiante', diasSemana: null, duracion: 60 } });
+    mockApi({ 'GET /api/evaluaciones': { body: [e] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.getByText('Días disponibles por semana').nextSibling).toHaveTextContent('Sin indicar');
+    expect(screen.getByText('Lesiones previas').nextSibling).toHaveTextContent('Ninguna indicada');
+    expect(screen.getByText('Antecedentes crónicos').nextSibling).toHaveTextContent('No');
+  });
+});
+
+describe('validación de mediciones por el encargado', () => {
+  test('muestra "sin validar" y permite validarlas', async () => {
+    // Arrange
+    const validada = evaluacion(1, { mediciones: { ...evaluacion(1).mediciones, validado: true } });
+    mockApi({
+      'GET /api/evaluaciones': { body: [evaluacion(1)] },
+      'GET /api/socios/.*': { body: [] },
+      'POST /api/evaluaciones/uuid-1/mediciones/validar': { body: { status: 'success', evaluacion: validada } },
+    });
+    const user = userEvent.setup();
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+    expect(screen.getByText('SIN VALIDAR')).toBeInTheDocument();
+
+    // Act
+    await user.click(screen.getByRole('button', { name: 'Validar mediciones' }));
+
+    // Assert
+    expect(await screen.findByText('✓ MEDICIONES VALIDADAS')).toBeInTheDocument();
+    expect(JSON.parse(llamadas('POST', '/mediciones/validar')[0][1].body)).toEqual({ validado: true });
+    expect(llamadas('POST', '/mediciones/validar')[0][1].headers.Authorization).toBe('Bearer tok123');
+    expect(screen.getByRole('button', { name: 'Retirar validación' })).toBeInTheDocument();
+  });
+
+  test('retirar la validación envía validado=false', async () => {
+    // Arrange
+    const ya = evaluacion(1, { mediciones: { ...evaluacion(1).mediciones, validado: true } });
+    mockApi({
+      'GET /api/evaluaciones': { body: [ya] },
+      'GET /api/socios/.*': { body: [] },
+      'POST /api/evaluaciones/uuid-1/mediciones/validar': { body: { status: 'success', evaluacion: evaluacion(1) } },
+    });
+    const user = userEvent.setup();
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Act
+    await user.click(screen.getByRole('button', { name: 'Retirar validación' }));
+
+    // Assert
+    expect(await screen.findByText('SIN VALIDAR')).toBeInTheDocument();
+    expect(JSON.parse(llamadas('POST', '/mediciones/validar')[0][1].body)).toEqual({ validado: false });
+  });
+
+  test('si el servidor la rechaza muestra el error y no cambia el estado', async () => {
+    // Arrange
+    mockApi({
+      'GET /api/evaluaciones': { body: [evaluacion(1)] },
+      'GET /api/socios/.*': { body: [] },
+      'POST /api/evaluaciones/uuid-1/mediciones/validar': { status: 409, body: { detail: 'La evaluación ya fue revisada o derivada' } },
+    });
+    const user = userEvent.setup();
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Act
+    await user.click(screen.getByRole('button', { name: 'Validar mediciones' }));
+
+    // Assert
+    expect(await screen.findByText('La evaluación ya fue revisada o derivada')).toBeInTheDocument();
+    expect(screen.getByText('SIN VALIDAR')).toBeInTheDocument();
+  });
+
+  test('en un caso cerrado se ve el estado pero no se puede cambiar', async () => {
+    // Arrange
+    const cerrada = evaluacion(1, {
+      estado: 'validado', estadoRevision: 'revisada', nivelFinal: 'A3',
+      mediciones: { ...evaluacion(1).mediciones, validado: true },
+    });
+    mockApi({ 'GET /api/evaluaciones': { body: [cerrada] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.getByText('✓ MEDICIONES VALIDADAS')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /mediciones|validación/i })).not.toBeInTheDocument();
+  });
+
+  test('una sesión expirada al validar avisa para volver a iniciar sesión', async () => {
+    // Arrange
+    mockApi({
+      'GET /api/evaluaciones': { body: [evaluacion(1)] },
+      'GET /api/socios/.*': { body: [] },
+      'POST /api/evaluaciones/uuid-1/mediciones/validar': { status: 401, body: { detail: 'Sesión inválida o expirada' } },
+    });
+    const user = userEvent.setup();
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Act
+    await user.click(screen.getByRole('button', { name: 'Validar mediciones' }));
+
+    // Assert
+    expect(props.onSesionInvalida).toHaveBeenCalled();
   });
 });

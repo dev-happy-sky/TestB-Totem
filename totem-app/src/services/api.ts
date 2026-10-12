@@ -4,7 +4,24 @@ export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://totem-backend
 
 export type EstadoRevision = 'pendiente' | 'revisada' | 'derivada';
 
-export type DatosSocio = { nombre: string; carrera: string; edad: number | null };
+/** Campos de la tabla `socios` que el tótem muestra y edita. */
+export type DatosSocio = {
+  nombre: string;
+  apellido: string;
+  fecha_nacimiento: string | null;
+  telefono: string | null;
+  plan_membresia: string | null;
+  edad: number | null;
+};
+
+export type DatosRegistro = {
+  matricula: string; nombre: string; apellido: string; fecha_nacimiento: string; telefono?: string; plan_membresia: string;
+  confirmar_duplicado?: boolean;
+};
+
+export type CambiosSocio = Partial<{
+  nombre: string; apellido: string; fecha_nacimiento: string; telefono: string; plan_membresia: string;
+}>;
 
 export type RespuestaIdentificacion =
   | { registrado: false; matricula: string }
@@ -17,7 +34,7 @@ export type RespuestaIdentificacion =
       vigencia_horas: number;
     };
 
-export type Coincidencia = { nombre: string; carrera: string | null; matricula: string };
+export type Coincidencia = { nombre: string; plan_membresia: string | null; matricula: string };
 
 export type ErrorApi = {
   ok: false;
@@ -75,11 +92,9 @@ async function llamar<T>(ruta: string, metodo: 'GET' | 'POST' | 'PUT', cuerpo?: 
 export const identificarSocio = (matricula: string) =>
   llamar<RespuestaIdentificacion>('/api/socios/identificar', 'POST', { matricula });
 
-export const registrarSocio = (datos: {
-  matricula: string; nombre: string; carrera: string; edad: number; confirmar_duplicado?: boolean;
-}) => llamar<{ status: string; socio: DatosSocio; matricula: string }>('/api/socios', 'POST', datos);
+export const registrarSocio = (datos: DatosRegistro) => llamar<{ status: string; socio: DatosSocio; matricula: string }>('/api/socios', 'POST', datos);
 
-export const actualizarSocio = (matricula: string, cambios: Partial<{ nombre: string; carrera: string; edad: number }>) =>
+export const actualizarSocio = (matricula: string, cambios: CambiosSocio) =>
   llamar<{ status: string; cambios: string[]; socio: DatosSocio }>(`/api/socios/${normalizarMatricula(matricula)}`, 'PUT', cambios);
 
 export const enviarEvaluacion = (payload: unknown) =>
