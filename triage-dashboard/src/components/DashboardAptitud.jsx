@@ -1,23 +1,45 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import ValidacionAptitud from './ValidacionAptitud';
+import TendenciaSocio from './TendenciaSocio';
+import { describirContacto, etiquetaDias, horaLocal } from '../lib/formato';
+import { FILTROS, alertaPendiente, describirOrigen, duracionEvaluacion, estadoRevision, filtrarCola, ordenarCola } from '../lib/cola';
 
-export default function DashboardAptitud() {
+export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout }) {
   const [colaEstudiantes, setColaEstudiantes] = useState([]);
   const [estudianteSeleccionado, setEstudianteSeleccionado] = useState(null);
+  const [filtro, setFiltro] = useState('todas');
+  const [orden, setOrden] = useState('riesgo');
+  const [historial, setHistorial] = useState({ clave: null, datos: [] });
+  const [errorAlerta, setErrorAlerta] = useState('');
+  const [errorMediciones, setErrorMediciones] = useState('');
+
+  // URL base de tu backend en Render
+  const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://totem-backend-g6yh.onrender.com';
+  const WS_URL = BACKEND_URL.replace(/^http/, 'ws') + '/ws/dashboard';
+  const authHeaders = { Authorization: `Bearer ${sesion.token}` };
 
   useEffect(() => {
-    // URL explícita a Render con el endpoint registrado en FastAPI
-    const wsUrl = 'wss://totem-backend-g6yh.onrender.com/ws/dashboard';
-    const socket = new WebSocket(wsUrl);
+    // 1. RECUPERAR HISTORIAL AL RECARGAR LA PÁGINA (Faltaba esto)
+    fetch(`${BACKEND_URL}/api/evaluaciones`, { headers: authHeaders })
+      .then(res => {
+        if (res.status === 401) { onSesionInvalida(); throw new Error('sesión inválida'); }
+        return res.json();
+      })
+      .then(data => {
+        setColaEstudiantes(data);
+        if (data.length > 0) setEstudianteSeleccionado(data[0]);
+        console.log('✓ Historial cargado desde Render');
+      })
+      .catch(err => console.error("✗ Error cargando base de datos:", err));
 
-    socket.onopen = () => {
-      console.log('✓ Conectado exitosamente al WebSocket de Render:', wsUrl);
-    };
+    // 2. CONEXIÓN WEBSOCKET PARA TIEMPO REAL
+    const socket = new WebSocket(WS_URL);
 
-    socket.onerror = (error) => {
-      console.error('✗ Error en WebSocket:', error);
-    };
+    // El token se envía en el primer mensaje; el servidor cierra la conexión si no es válido.
+    socket.onopen = () => socket.send(JSON.stringify({ token: sesion.token }));
+    socket.onclose = (ev) => { if (ev.code === 4401) onSesionInvalida(); };
+    socket.onerror = (error) => console.error('✗ Error en WebSocket:', error);
 
     socket.onmessage = (event) => {
       try {
@@ -35,24 +57,71 @@ export default function DashboardAptitud() {
       }
     };
 
-    return () => {
-      socket.close();
-    };
+    return () => socket.close();
   }, []);
 
-  const handleValidarEstudiante = (idUnicoEstudiante, nivelConfirmado) => {
-    setColaEstudiantes((prev) => 
-      prev.map((est) => 
-        est.idUnico === idUnicoEstudiante 
-          ? { ...est, estado: 'validado', nivelFinal: nivelConfirmado } 
-          : est
-      )
-    );
-    setEstudianteSeleccionado((prev) => 
-      prev && prev.idUnico === idUnicoEstudiante 
-        ? { ...prev, estado: 'validado', nivelFinal: nivelConfirmado } 
-        : prev
-    );
+  // Evaluaciones anteriores del socio seleccionado, para ver su evolución.
+  const rutSeleccionado = estudianteSeleccionado?.id;
+  const idSeleccionado = estudianteSeleccionado?.idBaseDatos;
+  useEffect(() => {
+    if (!rutSeleccionado || !idSeleccionado) return undefined;
+    let activo = true;
+    fetch(`${BACKEND_URL}/api/socios/${encodeURIComponent(rutSeleccionado)}/evaluaciones`, { headers: authHeaders })
+      .then((res) => {
+        if (res.status === 401) { onSesionInvalida(); throw new Error('sesión inválida'); }
+        return res.ok ? res.json() : null;
+      })
+      .then((datos) => { if (activo) setHistorial({ clave: idSeleccionado, datos }); })
+      .catch(() => { if (activo) setHistorial({ clave: idSeleccionado, datos: null }); });
+    return () => { activo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rutSeleccionado, idSeleccionado]);
+  const historialActual = historial.clave === idSeleccionado ? historial.datos : undefined;
+
+  // 3. GUARDAR LA DECISIÓN DEL ENCARGADO (confirmar, ajustar o derivar)
+  // La UI se actualiza con lo que el servidor confirmó (no de forma optimista): así nunca muestra un caso
+  // como cerrado si no quedó guardado.
+  const aplicarEvaluacion = (idUnico, evaluacion) => {
+    const combinar = (est) => ({ ...est, ...evaluacion, idUnico: est.idUnico });
+    setColaEstudiantes((prev) => prev.map((est) => (est.idUnico === idUnico ? combinar(est) : est)));
+    setEstudianteSeleccionado((prev) => (prev && prev.idUnico === idUnico ? combinar(prev) : prev));
+  };
+
+  const mensajeError = (data) => (typeof data?.detail === 'string' ? data.detail : 'Revisa los datos ingresados.');
+
+  const enviarAccion = async (idUnico, ruta, metodo, cuerpo) => {
+    const est = colaEstudiantes.find((e) => e.idUnico === idUnico);
+    if (!est?.idBaseDatos) return { ok: false, error: 'La evaluación aún no está guardada en el servidor.' };
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/evaluaciones/${est.idBaseDatos}${ruta}`, {
+        method: metodo,
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        ...(cuerpo ? { body: JSON.stringify(cuerpo) } : {}),
+      });
+      if (res.status === 401) { onSesionInvalida(); return { ok: false, error: 'Tu sesión expiró.' }; }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return { ok: false, error: mensajeError(data) };
+      aplicarEvaluacion(idUnico, data.evaluacion);
+      return { ok: true };
+    } catch {
+      return { ok: false, error: 'No se pudo comunicar con el servidor.' };
+    }
+  };
+
+  const handleValidarEstudiante = (idUnico, nivelFinal, extra = {}) =>
+    enviarAccion(idUnico, '', 'PUT', { nivel_final: nivelFinal, ...extra });
+
+  // El encargado confirma (o retira la confirmación de) las mediciones capturadas por el tótem.
+  const handleValidarMediciones = async (idUnico, validado) => {
+    setErrorMediciones('');
+    const resultado = await enviarAccion(idUnico, '/mediciones/validar', 'POST', { validado });
+    if (!resultado.ok) setErrorMediciones(resultado.error);
+  };
+
+  const handleRevisarAlerta = async (idUnico) => {
+    setErrorAlerta('');
+    const resultado = await enviarAccion(idUnico, '/alerta/revisar', 'POST');
+    if (!resultado.ok) setErrorAlerta(resultado.error);
   };
 
   const obtenerColorMetrica = (tipo, valor1, valor2 = 0) => {
@@ -68,34 +137,24 @@ export default function DashboardAptitud() {
     return esAnormal ? 'text-red-600' : 'text-slate-800';
   };
 
-  // --- LÓGICA DE ORDENAMIENTO (Gravedad A1 -> A4) ---
-  const obtenerPrioridad = (estudiante) => {
-    const nivel = estudiante.nivelFinal || estudiante.iaSugerida;
-    const prioridades = { 'A1': 1, 'A2': 2, 'A3': 3, 'A4': 4 };
-    return prioridades[nivel] || 5; 
-  };
+  // R.123 y R.135: orden por riesgo o fecha, y filtro por estado de revisión.
+  const colaOrdenada = filtrarCola(ordenarCola(colaEstudiantes, orden), filtro);
 
-  const colaOrdenada = [...colaEstudiantes].sort((a, b) => {
-    const estadoA = a.estado === 'validado' ? 1 : 0;
-    const estadoB = b.estado === 'validado' ? 1 : 0;
-    
-    if (estadoA !== estadoB) {
-      return estadoA - estadoB;
-    }
-    
-    return obtenerPrioridad(a) - obtenerPrioridad(b);
-  });
-
-  const kpiPendientes = colaEstudiantes.filter(e => e.estado === 'pendiente').length;
-  const kpiValidados = colaEstudiantes.filter(e => e.estado === 'validado').length;
+  const kpiPendientes = colaEstudiantes.filter(e => estadoRevision(e) === 'pendiente').length;
+  const kpiValidados = colaEstudiantes.filter(e => estadoRevision(e) !== 'pendiente').length;
   const kpiDerivados = colaEstudiantes.filter(e => e.nivelFinal === 'A1').length;
-  const kpiAlertas = colaEstudiantes.filter(e => e.alerta && e.estado === 'pendiente').length;
+  const kpiAlertas = colaEstudiantes.filter(alertaPendiente).length;
+  const contarFiltro = (id) => filtrarCola(colaEstudiantes, id).length;
 
   const countA = (nivel) => colaEstudiantes.filter(e => (e.nivelFinal || e.iaSugerida) === nivel).length;
   const totalGraph = Math.max(1, colaEstudiantes.length);
 
   return (
     <div className="min-h-screen bg-slate-100 p-6 flex flex-col font-sans">
+      <div className="flex justify-end items-center gap-3 mb-3 text-xs text-slate-500">
+        <span>{sesion.usuario} · {sesion.rol}</span>
+        <button onClick={onLogout} className="font-semibold text-slate-700 underline">Cerrar sesión</button>
+      </div>
       <div className="flex gap-4 mb-6">
         {[
           { l: 'POR VALIDAR', v: kpiPendientes, c: 'text-slate-800' },
@@ -125,11 +184,27 @@ export default function DashboardAptitud() {
           <div className="bg-white rounded-xl shadow-sm p-0 border border-slate-100 flex-1 overflow-y-auto">
              <div className="p-4 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white/95 backdrop-blur z-10">
                 <h2 className="text-sm font-bold text-slate-800">Cola de evaluación</h2>
-                <span className="text-xs text-slate-400">{kpiPendientes} pendientes</span>
+                <label className="text-xs text-slate-400 flex items-center gap-1">
+                  Ordenar por
+                  <select value={orden} onChange={(e) => setOrden(e.target.value)} className="border border-slate-200 rounded px-1 py-0.5 text-slate-600">
+                    <option value="riesgo">Riesgo</option>
+                    <option value="reciente">Más reciente</option>
+                  </select>
+                </label>
+             </div>
+             <div role="tablist" aria-label="Filtrar por estado" className="px-4 py-2 flex gap-2 border-b border-slate-100 bg-white">
+                {FILTROS.map((f) => (
+                  <button key={f.id} role="tab" aria-selected={filtro === f.id} onClick={() => setFiltro(f.id)}
+                    className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${filtro === f.id ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>
+                    {f.label} ({contarFiltro(f.id)})
+                  </button>
+                ))}
              </div>
              
              {colaOrdenada.length === 0 && (
-                <div className="p-8 text-center text-slate-400 text-sm">Esperando evaluaciones desde el Tótem...</div>
+                <div className="p-8 text-center text-slate-400 text-sm">
+                  {colaEstudiantes.length === 0 ? 'Esperando evaluaciones desde el Tótem...' : 'No hay evaluaciones en este filtro.'}
+                </div>
              )}
 
              {colaOrdenada.map((estudiante) => {
@@ -137,21 +212,25 @@ export default function DashboardAptitud() {
                const nivelVisible = estudiante.nivelFinal || estudiante.iaSugerida;
                
                return (
-                 <div key={estudiante.idUnico} onClick={() => setEstudianteSeleccionado(estudiante)} className={`p-4 flex items-center gap-3 cursor-pointer border-b border-slate-100 transition-all ${esSeleccionado ? 'bg-slate-50 border-l-4 border-slate-400' : 'bg-white hover:bg-slate-50 border-l-4 border-transparent'} ${estudiante.estado === 'validado' ? 'opacity-50 grayscale-[50%]' : ''}`}>
+                 <div key={estudiante.idUnico} onClick={() => setEstudianteSeleccionado(estudiante)} className={`p-4 flex items-center gap-3 cursor-pointer border-b border-slate-100 transition-all ${esSeleccionado ? 'bg-slate-50 border-l-4 border-slate-400' : 'bg-white hover:bg-slate-50 border-l-4 border-transparent'} ${estadoRevision(estudiante) !== 'pendiente' ? 'opacity-50 grayscale-[50%]' : ''}`}>
                     <div className={`w-10 h-10 text-white font-bold rounded-lg flex items-center justify-center ${nivelVisible === 'A1' ? 'bg-red-500' : nivelVisible === 'A2' ? 'bg-orange-500' : nivelVisible === 'A3' ? 'bg-yellow-500' : 'bg-green-500'}`}>
                       {nivelVisible}
                     </div>
                     <div className="flex-1">
                        <div className="flex items-center gap-2">
                          <span className="font-bold text-slate-800 text-sm">{estudiante.nombre}</span>
-                         {estudiante.estado === 'validado' ? (
+                         {estadoRevision(estudiante) === 'derivada' ? (
+                           <span className="text-[10px] font-bold bg-red-100 text-red-700 px-1.5 py-0.5 rounded">DERIVADA</span>
+                         ) : estadoRevision(estudiante) === 'revisada' ? (
                            <span className="text-[10px] font-bold bg-green-100 text-green-700 px-1.5 py-0.5 rounded flex items-center gap-1">✓ VALIDADO</span>
                          ) : (
                            <span className="text-[10px] font-bold bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded">SUGERIDA</span>
                          )}
-                         {estudiante.alerta && estudiante.estado !== 'validado' && <span className="text-[10px] font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded">{estudiante.alerta}</span>}
+                         {alertaPendiente(estudiante) && (estudiante.alertaNivel === 'critica'
+                           ? <span className="text-[10px] font-bold bg-red-600 text-white px-1.5 py-0.5 rounded">ALERTA CRÍTICA</span>
+                           : <span className="text-[10px] font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded">{estudiante.alerta}</span>)}
                        </div>
-                       <div className="text-xs text-slate-500 mt-0.5">{estudiante.objetivo} · {estudiante.carrera}</div>
+                       <div className="text-xs text-slate-500 mt-0.5">{estudiante.objetivo} · {estudiante.planMembresia}</div>
                     </div>
                     <div className="text-right text-xs">
                        <div className="font-medium text-slate-700">{estudiante.id}</div>
@@ -169,7 +248,14 @@ export default function DashboardAptitud() {
               <div className="flex justify-between items-start mb-6">
                 <div>
                   <h1 className="text-2xl font-bold text-slate-800">{estudianteSeleccionado.nombre}</h1>
-                  <p className="text-sm text-slate-500 font-mono mt-1">{estudianteSeleccionado.id} · {estudianteSeleccionado.edad} años · {estudianteSeleccionado.carrera}</p>
+                  <p className="text-sm text-slate-500 font-mono mt-1">{estudianteSeleccionado.id} · {estudianteSeleccionado.edad} años · {estudianteSeleccionado.planMembresia}</p>
+                  {describirContacto(estudianteSeleccionado) && <p className="text-xs text-slate-500 mt-1">{describirContacto(estudianteSeleccionado)}</p>}
+                  {(describirOrigen(estudianteSeleccionado) || duracionEvaluacion(estudianteSeleccionado) !== null) && (
+                    <p className="text-xs text-slate-400 mt-1">
+                      {describirOrigen(estudianteSeleccionado)}
+                      {duracionEvaluacion(estudianteSeleccionado) !== null && `${describirOrigen(estudianteSeleccionado) ? ' · ' : ''}Duración: ${duracionEvaluacion(estudianteSeleccionado)} min`}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -189,28 +275,78 @@ export default function DashboardAptitud() {
                       <p className="text-sm text-slate-600">Sugerencia previa a validación profesional</p>
                     </div>
                  </div>
-                 {estudianteSeleccionado.alerta && estudianteSeleccionado.estado !== 'validado' && (
-                   <div className="bg-red-50 text-red-700 text-sm p-3 rounded-lg flex gap-2 items-start mt-4">
-                     <span className="font-bold">⚠</span>
-                     <p>Confianza bajo el umbral: presenta síntoma(s) de riesgo. Derivar a evaluación profesional.</p>
+                 {estudianteSeleccionado.alerta && (
+                   <div role="region" aria-label="Alerta" className={`${estudianteSeleccionado.alertaNivel === 'critica' ? 'bg-red-100 border border-red-300 text-red-800' : 'bg-red-50 text-red-700'} text-sm p-3 rounded-lg mt-4`}>
+                     <div className="flex items-center justify-between gap-3">
+                       <p className="font-bold">
+                         ⚠ {estudianteSeleccionado.alertaNivel === 'critica' ? 'Alerta CRÍTICA' : 'Alerta de riesgo'}
+                         {estudianteSeleccionado.alertaRevisada ? ' · revisada' : ''}
+                       </p>
+                       {!estudianteSeleccionado.alertaRevisada && (
+                         <button onClick={() => handleRevisarAlerta(estudianteSeleccionado.idUnico)} className="text-xs font-bold underline whitespace-nowrap">
+                           Marcar alerta como revisada
+                         </button>
+                       )}
+                     </div>
+                     <p className="mt-1">Presenta condiciones que aconsejan derivar a evaluación profesional.</p>
+                     {errorAlerta && <p role="alert" className="mt-2 text-xs">{errorAlerta}</p>}
                    </div>
                  )}
               </div>
 
               <div className="mb-6">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 block">Mediciones del tótem</span>
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Factores considerados por la sugerencia</span>
+                {estudianteSeleccionado.factores?.length > 0 ? (
+                  <ul className="list-disc pl-5 text-sm text-slate-700">
+                    {estudianteSeleccionado.factores.map((f) => <li key={f}>{f}</li>)}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-slate-400">No se detectaron factores de riesgo.</p>
+                )}
+                <p className="text-xs text-slate-400 mt-2">Regla provisional: solo considera síntomas declarados y condiciones críticas, no los signos vitales.</p>
+              </div>
+
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-3 gap-3">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Mediciones del tótem{estudianteSeleccionado.mediciones?.capturadoEn && horaLocal(estudianteSeleccionado.mediciones.capturadoEn) ? ` · capturadas a las ${horaLocal(estudianteSeleccionado.mediciones.capturadoEn)}` : ''}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${estudianteSeleccionado.mediciones?.validado ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                      {estudianteSeleccionado.mediciones?.validado ? '✓ MEDICIONES VALIDADAS' : 'SIN VALIDAR'}
+                    </span>
+                    {estadoRevision(estudianteSeleccionado) === 'pendiente' && (
+                      <button
+                        onClick={() => handleValidarMediciones(estudianteSeleccionado.idUnico, !estudianteSeleccionado.mediciones?.validado)}
+                        className="text-xs font-bold underline whitespace-nowrap text-slate-700"
+                      >
+                        {estudianteSeleccionado.mediciones?.validado ? 'Retirar validación' : 'Validar mediciones'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {errorMediciones && <p role="alert" className="mb-2 text-xs text-red-600">{errorMediciones}</p>}
                 <div className="grid grid-cols-3 gap-3">
                   <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">PA</span><span className={`text-xl font-bold ${obtenerColorMetrica('presion', estudianteSeleccionado.mediciones?.presionSys, estudianteSeleccionado.mediciones?.presionDia)}`}>{estudianteSeleccionado.mediciones?.presionSys || '--'}/{estudianteSeleccionado.mediciones?.presionDia || '--'}</span> <span className="text-xs text-slate-400 ml-1">mmHg</span></div>
                   <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">FC REPOSO</span><span className={`text-xl font-bold ${obtenerColorMetrica('fc', estudianteSeleccionado.mediciones?.fcReposo)}`}>{estudianteSeleccionado.mediciones?.fcReposo || '--'}</span> <span className="text-xs text-slate-400 ml-1">lpm</span></div>
                   <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">FC RECUP.</span><span className="text-xl font-bold text-slate-800">{estudianteSeleccionado.mediciones?.fcRecup || '--'}</span> <span className="text-xs text-slate-400 ml-1">lpm</span></div>
+                  <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">PESO</span><span className="text-xl font-bold text-slate-800">{estudianteSeleccionado.mediciones?.peso || '--'}</span> <span className="text-xs text-slate-400 ml-1">kg</span></div>
                   <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">IMC</span><span className={`text-xl font-bold ${obtenerColorMetrica('imc', estudianteSeleccionado.mediciones?.imc)}`}>{estudianteSeleccionado.mediciones?.imc || '--'}</span> <span className="text-xs text-slate-400 ml-1">kg/m²</span></div>
                   <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">GRASA</span><span className="text-xl font-bold text-slate-800">{estudianteSeleccionado.mediciones?.grasa || '--'}</span> <span className="text-xs text-slate-400 ml-1">%</span></div>
+                  <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">MASA MUSCULAR</span><span className="text-xl font-bold text-slate-800">{estudianteSeleccionado.mediciones?.masaMuscular || '--'}</span> <span className="text-xs text-slate-400 ml-1">kg</span></div>
                   <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">VO₂ MÁX</span><span className="text-xl font-bold text-slate-800">{estudianteSeleccionado.mediciones?.vo2Max || '--'}</span> <span className="text-xs text-slate-400 ml-1">ml/kg</span></div>
                 </div>
               </div>
 
               <div className="mb-2">
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Cuestionario de Salud</span>
+                <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm mb-4">
+                  <div><dt className="text-[10px] font-bold text-slate-400 uppercase">Objetivo principal</dt><dd className="text-slate-800">{estudianteSeleccionado.entrenamiento?.objetivo || estudianteSeleccionado.objetivo || 'Sin indicar'}</dd></div>
+                  <div><dt className="text-[10px] font-bold text-slate-400 uppercase">Nivel de experiencia</dt><dd className="text-slate-800">{estudianteSeleccionado.entrenamiento?.experiencia || 'Sin indicar'}</dd></div>
+                  <div><dt className="text-[10px] font-bold text-slate-400 uppercase">Días disponibles por semana</dt><dd className="text-slate-800">{etiquetaDias(estudianteSeleccionado.entrenamiento?.diasSemana)}</dd></div>
+                  <div><dt className="text-[10px] font-bold text-slate-400 uppercase">Antecedentes crónicos</dt><dd className="text-slate-800">{estudianteSeleccionado.salud?.antecedentesCronicos ? 'Sí' : 'No'}</dd></div>
+                  <div className="col-span-2"><dt className="text-[10px] font-bold text-slate-400 uppercase">Lesiones previas</dt><dd className="text-slate-800">{estudianteSeleccionado.salud?.lesionesPrevias || 'Ninguna indicada'}</dd></div>
+                </dl>
                 <div className="flex flex-wrap gap-2">
                    {estudianteSeleccionado.salud?.sintomas?.map((sintoma, idx) => (<span key={idx} className="px-3 py-1 bg-red-50 text-red-600 border border-red-100 text-xs rounded-full font-medium">{sintoma}</span>))}
                    {estudianteSeleccionado.salud?.condiciones?.map((cond, idx) => (<span key={idx} className="px-3 py-1 bg-orange-50 text-orange-600 border border-orange-100 text-xs rounded-full font-medium">{cond}</span>))}
@@ -218,9 +354,15 @@ export default function DashboardAptitud() {
                 </div>
               </div>
               
-              <ValidacionAptitud 
-                 estudiante={estudianteSeleccionado} 
-                 onValidar={handleValidarEstudiante} 
+              <div className="mt-6">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Evolución del socio</span>
+                <TendenciaSocio estudiante={estudianteSeleccionado} historial={historialActual} />
+              </div>
+
+              <ValidacionAptitud
+                 key={estudianteSeleccionado.idUnico}
+                 estudiante={estudianteSeleccionado}
+                 onValidar={handleValidarEstudiante}
               />
             </>
           ) : (
