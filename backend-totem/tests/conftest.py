@@ -29,10 +29,11 @@ def client():
 def payload():
     return {
         "consentimiento": True,
-        "estudiante": {"nombre": "Ana Pérez Soto", "matricula": "12.345.678-9", "edad": "30", "carrera": "Plan Full"},
+        "estudiante": {"nombre": "Ana", "apellido": "Pérez Soto", "matricula": "20231234A", "fecha_nacimiento": "2002-03-15",
+                       "telefono": "+56 9 1234 5678", "plan_membresia": "Plan Estudiante"},
         "mediciones": {"presionSys": 118, "presionDia": 78, "fcReposo": 70, "fcRecup": 100,
-                       "peso": "70.5", "imc": "24.1", "grasa": "20.2", "vo2Max": "40.0"},
-        "entrenamiento": {"objetivo": "Fuerza", "experiencia": "Intermedio", "duracion": 60},
+                       "peso": "70.5", "imc": "24.1", "grasa": "20.2", "vo2Max": "40.0", "masaMuscular": "30.5"},
+        "entrenamiento": {"objetivo": "Fuerza", "experiencia": "Intermedio", "duracion": 60, "diasSemana": 3},
         "salud": {"sintomas": [], "condiciones": ["Asma", "Lesión de rodilla"]},
     }
 

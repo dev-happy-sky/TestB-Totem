@@ -64,3 +64,16 @@ export function calcularTendencia(actual, historial) {
     return { clave, etiqueta, unidad, actual: ahora, anterior: antes, delta: Math.round((ahora - antes) * 10) / 10 };
   }).filter(Boolean);
 }
+
+// R.16: minutos entre el inicio y el término de la evaluación en el tótem. null si falta alguno de los dos.
+export function duracionEvaluacion(e) {
+  const inicio = Date.parse(e.inicioEvaluacion);
+  const fin = Date.parse(e.finEvaluacion);
+  if (Number.isNaN(inicio) || Number.isNaN(fin) || fin < inicio) return null;
+  return Math.round((fin - inicio) / 60000);
+}
+
+// R.18 y R.19: "Tótem X · Sucursal Y", omitiendo lo que no se conoce.
+export function describirOrigen(e) {
+  return [e.totem && `Tótem ${e.totem}`, e.sucursal].filter(Boolean).join(' · ');
+}

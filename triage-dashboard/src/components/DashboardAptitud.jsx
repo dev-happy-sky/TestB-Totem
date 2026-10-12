@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import ValidacionAptitud from './ValidacionAptitud';
 import TendenciaSocio from './TendenciaSocio';
-import { FILTROS, alertaPendiente, estadoRevision, filtrarCola, ordenarCola } from '../lib/cola';
+import { describirContacto, etiquetaDias, horaLocal } from '../lib/formato';
+import { FILTROS, alertaPendiente, describirOrigen, duracionEvaluacion, estadoRevision, filtrarCola, ordenarCola } from '../lib/cola';
 
 export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout }) {
   const [colaEstudiantes, setColaEstudiantes] = useState([]);
@@ -11,6 +12,7 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout })
   const [orden, setOrden] = useState('riesgo');
   const [historial, setHistorial] = useState({ clave: null, datos: [] });
   const [errorAlerta, setErrorAlerta] = useState('');
+  const [errorMediciones, setErrorMediciones] = useState('');
 
   // URL base de tu backend en Render
   const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://totem-backend-g6yh.onrender.com';
@@ -108,6 +110,13 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout })
 
   const handleValidarEstudiante = (idUnico, nivelFinal, extra = {}) =>
     enviarAccion(idUnico, '', 'PUT', { nivel_final: nivelFinal, ...extra });
+
+  // El encargado confirma (o retira la confirmación de) las mediciones capturadas por el tótem.
+  const handleValidarMediciones = async (idUnico, validado) => {
+    setErrorMediciones('');
+    const resultado = await enviarAccion(idUnico, '/mediciones/validar', 'POST', { validado });
+    if (!resultado.ok) setErrorMediciones(resultado.error);
+  };
 
   const handleRevisarAlerta = async (idUnico) => {
     setErrorAlerta('');
@@ -221,7 +230,7 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout })
                            ? <span className="text-[10px] font-bold bg-red-600 text-white px-1.5 py-0.5 rounded">ALERTA CRÍTICA</span>
                            : <span className="text-[10px] font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded">{estudiante.alerta}</span>)}
                        </div>
-                       <div className="text-xs text-slate-500 mt-0.5">{estudiante.objetivo} · {estudiante.carrera}</div>
+                       <div className="text-xs text-slate-500 mt-0.5">{estudiante.objetivo} · {estudiante.planMembresia}</div>
                     </div>
                     <div className="text-right text-xs">
                        <div className="font-medium text-slate-700">{estudiante.id}</div>
@@ -239,7 +248,14 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout })
               <div className="flex justify-between items-start mb-6">
                 <div>
                   <h1 className="text-2xl font-bold text-slate-800">{estudianteSeleccionado.nombre}</h1>
-                  <p className="text-sm text-slate-500 font-mono mt-1">{estudianteSeleccionado.id} · {estudianteSeleccionado.edad} años · {estudianteSeleccionado.carrera}</p>
+                  <p className="text-sm text-slate-500 font-mono mt-1">{estudianteSeleccionado.id} · {estudianteSeleccionado.edad} años · {estudianteSeleccionado.planMembresia}</p>
+                  {describirContacto(estudianteSeleccionado) && <p className="text-xs text-slate-500 mt-1">{describirContacto(estudianteSeleccionado)}</p>}
+                  {(describirOrigen(estudianteSeleccionado) || duracionEvaluacion(estudianteSeleccionado) !== null) && (
+                    <p className="text-xs text-slate-400 mt-1">
+                      {describirOrigen(estudianteSeleccionado)}
+                      {duracionEvaluacion(estudianteSeleccionado) !== null && `${describirOrigen(estudianteSeleccionado) ? ' · ' : ''}Duración: ${duracionEvaluacion(estudianteSeleccionado)} min`}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -291,19 +307,46 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout })
               </div>
 
               <div className="mb-6">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 block">Mediciones del tótem</span>
+                <div className="flex items-center justify-between mb-3 gap-3">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Mediciones del tótem{estudianteSeleccionado.mediciones?.capturadoEn && horaLocal(estudianteSeleccionado.mediciones.capturadoEn) ? ` · capturadas a las ${horaLocal(estudianteSeleccionado.mediciones.capturadoEn)}` : ''}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${estudianteSeleccionado.mediciones?.validado ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                      {estudianteSeleccionado.mediciones?.validado ? '✓ MEDICIONES VALIDADAS' : 'SIN VALIDAR'}
+                    </span>
+                    {estadoRevision(estudianteSeleccionado) === 'pendiente' && (
+                      <button
+                        onClick={() => handleValidarMediciones(estudianteSeleccionado.idUnico, !estudianteSeleccionado.mediciones?.validado)}
+                        className="text-xs font-bold underline whitespace-nowrap text-slate-700"
+                      >
+                        {estudianteSeleccionado.mediciones?.validado ? 'Retirar validación' : 'Validar mediciones'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {errorMediciones && <p role="alert" className="mb-2 text-xs text-red-600">{errorMediciones}</p>}
                 <div className="grid grid-cols-3 gap-3">
                   <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">PA</span><span className={`text-xl font-bold ${obtenerColorMetrica('presion', estudianteSeleccionado.mediciones?.presionSys, estudianteSeleccionado.mediciones?.presionDia)}`}>{estudianteSeleccionado.mediciones?.presionSys || '--'}/{estudianteSeleccionado.mediciones?.presionDia || '--'}</span> <span className="text-xs text-slate-400 ml-1">mmHg</span></div>
                   <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">FC REPOSO</span><span className={`text-xl font-bold ${obtenerColorMetrica('fc', estudianteSeleccionado.mediciones?.fcReposo)}`}>{estudianteSeleccionado.mediciones?.fcReposo || '--'}</span> <span className="text-xs text-slate-400 ml-1">lpm</span></div>
                   <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">FC RECUP.</span><span className="text-xl font-bold text-slate-800">{estudianteSeleccionado.mediciones?.fcRecup || '--'}</span> <span className="text-xs text-slate-400 ml-1">lpm</span></div>
+                  <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">PESO</span><span className="text-xl font-bold text-slate-800">{estudianteSeleccionado.mediciones?.peso || '--'}</span> <span className="text-xs text-slate-400 ml-1">kg</span></div>
                   <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">IMC</span><span className={`text-xl font-bold ${obtenerColorMetrica('imc', estudianteSeleccionado.mediciones?.imc)}`}>{estudianteSeleccionado.mediciones?.imc || '--'}</span> <span className="text-xs text-slate-400 ml-1">kg/m²</span></div>
                   <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">GRASA</span><span className="text-xl font-bold text-slate-800">{estudianteSeleccionado.mediciones?.grasa || '--'}</span> <span className="text-xs text-slate-400 ml-1">%</span></div>
+                  <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">MASA MUSCULAR</span><span className="text-xl font-bold text-slate-800">{estudianteSeleccionado.mediciones?.masaMuscular || '--'}</span> <span className="text-xs text-slate-400 ml-1">kg</span></div>
                   <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">VO₂ MÁX</span><span className="text-xl font-bold text-slate-800">{estudianteSeleccionado.mediciones?.vo2Max || '--'}</span> <span className="text-xs text-slate-400 ml-1">ml/kg</span></div>
                 </div>
               </div>
 
               <div className="mb-2">
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Cuestionario de Salud</span>
+                <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm mb-4">
+                  <div><dt className="text-[10px] font-bold text-slate-400 uppercase">Objetivo principal</dt><dd className="text-slate-800">{estudianteSeleccionado.entrenamiento?.objetivo || estudianteSeleccionado.objetivo || 'Sin indicar'}</dd></div>
+                  <div><dt className="text-[10px] font-bold text-slate-400 uppercase">Nivel de experiencia</dt><dd className="text-slate-800">{estudianteSeleccionado.entrenamiento?.experiencia || 'Sin indicar'}</dd></div>
+                  <div><dt className="text-[10px] font-bold text-slate-400 uppercase">Días disponibles por semana</dt><dd className="text-slate-800">{etiquetaDias(estudianteSeleccionado.entrenamiento?.diasSemana)}</dd></div>
+                  <div><dt className="text-[10px] font-bold text-slate-400 uppercase">Antecedentes crónicos</dt><dd className="text-slate-800">{estudianteSeleccionado.salud?.antecedentesCronicos ? 'Sí' : 'No'}</dd></div>
+                  <div className="col-span-2"><dt className="text-[10px] font-bold text-slate-400 uppercase">Lesiones previas</dt><dd className="text-slate-800">{estudianteSeleccionado.salud?.lesionesPrevias || 'Ninguna indicada'}</dd></div>
+                </dl>
                 <div className="flex flex-wrap gap-2">
                    {estudianteSeleccionado.salud?.sintomas?.map((sintoma, idx) => (<span key={idx} className="px-3 py-1 bg-red-50 text-red-600 border border-red-100 text-xs rounded-full font-medium">{sintoma}</span>))}
                    {estudianteSeleccionado.salud?.condiciones?.map((cond, idx) => (<span key={idx} className="px-3 py-1 bg-orange-50 text-orange-600 border border-orange-100 text-xs rounded-full font-medium">{cond}</span>))}
