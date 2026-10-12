@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import ValidacionAptitud from './ValidacionAptitud';
 import TendenciaSocio from './TendenciaSocio';
 import { ETIQUETA_SEVERIDAD, coincidenciaIA, nivelConfianza, nombreCategoria, porcentajeConfianza } from '../lib/ia';
+import { hayCalibracionVencida, resumirDispositivos, resumirErrores } from '../lib/mediciones';
 import { describirContacto, etiquetaDias, horaLocal } from '../lib/formato';
 import { FILTROS, alertaPendiente, describirOrigen, duracionEvaluacion, estadoRevision, filtrarCola, ordenarCola } from '../lib/cola';
 
@@ -353,6 +354,32 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout })
                   </div>
                 </div>
                 {errorMediciones && <p role="alert" className="mb-2 text-xs text-red-600">{errorMediciones}</p>}
+                {resumirDispositivos(estudianteSeleccionado.mediciones?.dispositivos).length > 0 && (
+                  <ul aria-label="Dispositivos de medición" className="mb-3 text-xs text-slate-500 space-y-0.5">
+                    {resumirDispositivos(estudianteSeleccionado.mediciones?.dispositivos).map((d) => (
+                      <li key={d.sensor}>
+                        {d.etiqueta} · {d.id} · <span className={d.vencida ? 'font-bold text-red-600' : ''}>{d.calibracionTexto}</span>{d.hora ? ` · ${d.hora}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {hayCalibracionVencida(estudianteSeleccionado.mediciones?.dispositivos) && (
+                  <p role="note" className="mb-3 text-xs bg-amber-50 border border-amber-200 text-amber-900 p-2 rounded">
+                    Hay dispositivos con la calibración vencida: sus mediciones pueden ser menos exactas y bajan la confianza de la sugerencia.
+                  </p>
+                )}
+                {resumirErrores(estudianteSeleccionado.mediciones?.errores).length > 0 && (
+                  <details className="mb-3">
+                    <summary className="text-xs font-semibold text-slate-500 cursor-pointer">
+                      Errores durante la medición ({resumirErrores(estudianteSeleccionado.mediciones?.errores).length})
+                    </summary>
+                    <ul className="mt-1 text-xs text-slate-600 space-y-0.5">
+                      {resumirErrores(estudianteSeleccionado.mediciones?.errores).map((e, i) => (
+                        <li key={i}>{e.sensor}: {e.tipo}{e.mensaje ? ` — ${e.mensaje}` : ''}{e.hora ? ` (${e.hora})` : ''}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
                 <div className="grid grid-cols-3 gap-3">
                   <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">PA</span><span className={`text-xl font-bold ${obtenerColorMetrica('presion', estudianteSeleccionado.mediciones?.presionSys, estudianteSeleccionado.mediciones?.presionDia)}`}>{estudianteSeleccionado.mediciones?.presionSys || '--'}/{estudianteSeleccionado.mediciones?.presionDia || '--'}</span> <span className="text-xs text-slate-400 ml-1">mmHg</span></div>
                   <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">FC REPOSO</span><span className={`text-xl font-bold ${obtenerColorMetrica('fc', estudianteSeleccionado.mediciones?.fcReposo)}`}>{estudianteSeleccionado.mediciones?.fcReposo || '--'}</span> <span className="text-xs text-slate-400 ml-1">lpm</span></div>

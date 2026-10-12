@@ -1,10 +1,14 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, SafeAreaView, Alert } from 'react-native';
 import Slider from '@react-native-community/slider';
 
 import {
   actualizarSocio, enviarEvaluacion, identificarSocio, registrarSocio, type CambiosSocio, type RespuestaIdentificacion,
 } from '../services/api';
+import PasoMediciones from '../components/paso-mediciones';
+import {
+  crearSensores, ETIQUETA_SENSOR, TIPOS_SENSOR, type ErrorMedicion, type Lectura, type TipoSensor, type ValoresMedidos,
+} from '../sensores';
 import { isoADisplay, parseFechaNacimiento, telefonoValido } from '../utils/fecha';
 import { matriculaValida, MENSAJE_MATRICULA, normalizarMatricula } from '../utils/matricula';
 
@@ -13,9 +17,6 @@ type Previas = Extract<RespuestaIdentificacion, { registrado: true }>;
 
 // Campos de `socios`. La fecha se escribe como DD/MM/AAAA y el teléfono es opcional.
 const FORM_INICIAL = { matricula: '', nombre: '', apellido: '', fechaNacimiento: '', telefono: '', plan: '' };
-const MEDICIONES_INICIALES = {
-  presionSys: 117, presionDia: 81, fcReposo: 79, fcRecup: 101, peso: '90.3', imc: '27.3', grasa: '18.3', vo2Max: '44.6', masaMuscular: '31.2',
-};
 
 const formatearFecha = (iso: string) => {
   const f = new Date(iso);
@@ -42,7 +43,11 @@ export default function App() {
   const [consentimiento, setConsentimiento] = useState(false);
 
   // --- ESTADO PASO 2 ---
-  const [mediciones, setMediciones] = useState(MEDICIONES_INICIALES);
+  const sensores = useMemo(() => crearSensores(), []);
+  const [lecturas, setLecturas] = useState<Partial<Record<TipoSensor, Lectura>>>({});
+  const [erroresMedicion, setErroresMedicion] = useState<ErrorMedicion[]>([]);
+  // Valores que entregaron los sensores (solo lo que se midió: lo demás se informa como dato faltante)
+  const mediciones: ValoresMedidos = Object.assign({}, ...Object.values(lecturas).map((l) => l.valores));
 
   // --- ESTADO PASO 3 ---
   const [objetivo, setObjetivo] = useState('Fuerza');
@@ -56,20 +61,6 @@ export default function App() {
   const [condicionesSalud, setCondicionesSalud] = useState(['Hipertensión']);
 
   // --- FUNCIONES LÓGICAS ---
-  const simularMediciones = () => {
-    setMediciones({
-      presionSys: Math.floor(Math.random() * (140 - 90 + 1)) + 90,
-      presionDia: Math.floor(Math.random() * (90 - 60 + 1)) + 60,
-      fcReposo: Math.floor(Math.random() * (100 - 60 + 1)) + 60,
-      fcRecup: Math.floor(Math.random() * (150 - 100 + 1)) + 100,
-      peso: (Math.random() * (110 - 60) + 60).toFixed(1),
-      imc: (Math.random() * (32 - 18.5) + 18.5).toFixed(1),
-      grasa: (Math.random() * (25 - 10) + 10).toFixed(1),
-      vo2Max: (Math.random() * (60 - 30) + 30).toFixed(1),
-      masaMuscular: (Math.random() * (45 - 25) + 25).toFixed(1)
-    });
-  };
-
   const toggleSintoma = (sintoma: string) => {
     setSintomasHoy(prev => prev.includes(sintoma) ? prev.filter(s => s !== sintoma) : [...prev, sintoma]);
   };
@@ -87,7 +78,8 @@ export default function App() {
     setErrorIdentificacion('');
     setConsentimiento(false);
     setInicioEvaluacion(null);
-    setMediciones(MEDICIONES_INICIALES);
+    setLecturas({});
+    setErroresMedicion([]);
     setDiasSemana(null);
     setLesionesPrevias('');
     setPasoActual(1);
@@ -218,6 +210,20 @@ export default function App() {
       else await continuarRegistrado();
       return;
     }
+    if (pasoActual === 2) {
+      const faltan = TIPOS_SENSOR.filter((t) => !lecturas[t]);
+      if (faltan.length > 0) {
+        Alert.alert(
+          'Faltan mediciones',
+          `Aún no se midió: ${faltan.map((t) => ETIQUETA_SENSOR[t]).join(', ')}. Si continúas, la evaluación quedará con menos datos y la revisará el encargado.`,
+          [
+            { text: 'Volver a medir', style: 'cancel' },
+            { text: 'Continuar sin ellas', onPress: () => setPasoActual(3) },
+          ],
+        );
+        return;
+      }
+    }
     if (pasoActual === 3 && diasSemana === null) {
       Alert.alert('Falta un dato', 'Indica cuántos días a la semana puedes entrenar.');
       return;
@@ -239,7 +245,10 @@ export default function App() {
         fecha_nacimiento: parseFechaNacimiento(formData.fechaNacimiento) ?? undefined,
         telefono: formData.telefono.trim() || undefined, plan_membresia: formData.plan.trim(),
       },
-      mediciones: mediciones,
+      mediciones,
+      dispositivos: Object.fromEntries(Object.values(lecturas).map((l) => [
+        l.sensor, { id: l.dispositivo.id, calibracion: l.dispositivo.calibracion, capturado_en: l.capturadoEn }])),
+      errores_medicion: erroresMedicion,
       entrenamiento: { objetivo, experiencia, duracion, diasSemana: diasSemana ?? undefined },
       salud: { sintomas: sintomasHoy, condiciones: condicionesSalud, lesionesPrevias: lesionesPrevias.trim() || undefined },
       totem_serial: process.env.EXPO_PUBLIC_TOTEM_SERIAL,
@@ -334,94 +343,19 @@ export default function App() {
     </View>
   );
 
-  const renderPaso2 = () => {
-    const evaluarColor = (tipo: string, valor1: string | number, valor2: string | number = 0) => {
-      const v1 = parseFloat(valor1.toString());
-      const v2 = parseFloat(valor2.toString());
-      let esAnormal = false;
-
-      switch(tipo) {
-        case 'presion':
-          esAnormal = v1 >= 130 || v1 < 90 || v2 >= 85 || v2 < 60;
-          break;
-        case 'fc':
-          esAnormal = v1 > 100 || v1 < 60;
-          break;
-        case 'imc':
-          esAnormal = v1 >= 25.0 || v1 < 18.5;
-          break;
-      }
-      return esAnormal ? '#ef4444' : '#0f172a';
-    };
-
-    return (
-      <View style={styles.stepContainer}>
-        <Text style={styles.stepSubtitle}>PASO 2 - ESTACIÓN DE SENSORES</Text>
-        <Text style={styles.stepTitle}>Tus mediciones de hoy</Text>
-        <Text style={styles.stepDescription}>Los sensores del tótem se conectan por Bluetooth. Sigue las indicaciones y presiona medir.</Text>
-        
-        <View style={styles.grid}>
-          <View style={styles.sensorCard}>
-            <Text style={styles.sensorTitle}>Tensiómetro</Text>
-            <Text style={styles.label}>PRESIÓN</Text>
-            <Text style={[styles.metric, { color: evaluarColor('presion', mediciones.presionSys, mediciones.presionDia) }]}>
-              {mediciones.presionSys}/{mediciones.presionDia} <Text style={styles.unit}>mmHg</Text>
-            </Text>
-          </View>
-          
-          <View style={styles.sensorCard}>
-            <Text style={styles.sensorTitle}>Banda de pecho</Text>
-            <View style={styles.row}>
-              <View style={{marginRight: 20}}>
-                <Text style={styles.label}>FC REPOSO</Text>
-                <Text style={[styles.metric, { color: evaluarColor('fc', mediciones.fcReposo) }]}>
-                  {mediciones.fcReposo} <Text style={styles.unit}>lpm</Text>
-                </Text>
-              </View>
-              <View>
-                <Text style={styles.label}>FC RECUP.</Text>
-                <Text style={styles.metric}>{mediciones.fcRecup} <Text style={styles.unit}>lpm</Text></Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.sensorCard}>
-            <Text style={styles.sensorTitle}>Balanza</Text>
-            <View style={styles.row}>
-              <View style={{marginRight: 15}}>
-                <Text style={styles.label}>PESO</Text>
-                <Text style={styles.metric}>{mediciones.peso} <Text style={styles.unit}>kg</Text></Text>
-              </View>
-              <View style={{marginRight: 15}}>
-                <Text style={styles.label}>IMC</Text>
-                <Text style={[styles.metric, { color: evaluarColor('imc', mediciones.imc) }]}>
-                  {mediciones.imc} <Text style={styles.unit}>kg/m²</Text>
-                </Text>
-              </View>
-              <View style={{marginRight: 15}}>
-                <Text style={styles.label}>GRASA</Text>
-                <Text style={styles.metric}>{mediciones.grasa} <Text style={styles.unit}>%</Text></Text>
-              </View>
-              <View>
-                <Text style={styles.label}>MASA MUSCULAR</Text>
-                <Text style={styles.metric}>{mediciones.masaMuscular} <Text style={styles.unit}>kg</Text></Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.sensorCard}>
-            <Text style={styles.sensorTitle}>Prueba esfuerzo</Text>
-            <Text style={styles.label}>VO₂ MÁX</Text>
-            <Text style={styles.metric}>{mediciones.vo2Max} <Text style={styles.unit}>ml/kg·min</Text></Text>
-          </View>
-        </View>
-
-        <TouchableOpacity style={styles.btnPrimary} onPress={simularMediciones}>
-          <Text style={styles.btnPrimaryText}>Volver a medir</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  };
+  const renderPaso2 = () => (
+    <View style={styles.stepContainer}>
+      <Text style={styles.stepSubtitle}>PASO 2 - ESTACIÓN DE SENSORES</Text>
+      <Text style={styles.stepTitle}>Tus mediciones de hoy</Text>
+      <Text style={styles.stepDescription}>Sigue las indicaciones de cada sensor y presiona medir. Si una medición falla, puedes repetirla.</Text>
+      <PasoMediciones
+        sensores={sensores}
+        lecturas={lecturas}
+        onLectura={(lectura) => setLecturas((previas) => ({ ...previas, [lectura.sensor]: lectura }))}
+        onError={(error) => setErroresMedicion((previos) => [...previos, error].slice(-50))}
+      />
+    </View>
+  );
 
   const renderPaso3 = () => {
     const listaObjetivos = ['Fuerza', 'Cardio', 'Flexibilidad', 'Natación', 'Recreativo'];
@@ -593,11 +527,6 @@ const styles = StyleSheet.create({
   input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', padding: 15, borderRadius: 10, fontSize: 16, color: '#1e293b', marginTop: 8 },
   row: { flexDirection: 'row' },
   
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  sensorCard: { width: '48%', backgroundColor: '#fff', padding: 20, borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 15 },
-  sensorTitle: { fontSize: 14, fontWeight: 'bold', color: '#1e293b', marginBottom: 15 },
-  metric: { fontSize: 24, fontWeight: 'bold', color: '#0f172a' },
-  unit: { fontSize: 12, color: '#94a3b8' },
   
   chipContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   chip: { backgroundColor: '#fff', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 30, borderWidth: 1, borderColor: '#e2e8f0' },

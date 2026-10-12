@@ -3,8 +3,17 @@ import { Alert, type AlertButton } from 'react-native';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
 
 import App from '../app/index';
+import { crearSensores, crearSensoresSimulados, type OpcionesSimulador } from '../sensores';
 
 jest.mock('@react-native-community/slider', () => 'Slider');
+// Los sensores reales (Bluetooth) no existen todavía: las pruebas usan el simulador, sin latencia y con valores fijos.
+jest.mock('../sensores', () => ({ ...jest.requireActual('../sensores'), crearSensores: jest.fn() }));
+
+const usarSensores = (opciones: OpcionesSimulador = {}) => {
+  const sensores = crearSensoresSimulados({ latenciaMs: 0, azar: () => 0.5, ...opciones });
+  (crearSensores as jest.Mock).mockReturnValue(sensores);
+  return sensores;
+};
 
 const MATRICULA = '20231234A';
 const CONSENTIMIENTO = /Autorizo el registro y uso de mis datos/;
@@ -43,6 +52,7 @@ const registrado = (extra: object = {}) => ({
 
 let alerta: jest.SpyInstance;
 beforeEach(() => {
+  usarSensores();
   alerta = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -77,8 +87,19 @@ const llegarAlPaso2 = async () => {
   await fireEvent.press(screen.getByText('Continuar →'));
   await screen.findByText('PASO 2 - ESTACIÓN DE SENSORES');
 };
+const ETIQUETAS_SENSORES = ['Tensiómetro', 'Banda de pecho', 'Balanza', 'Prueba de esfuerzo'];
+const medir = async (sensor: string) => fireEvent.press(screen.getByLabelText(new RegExp(`^(Medir|Volver a medir|Reintentar) ${sensor}$`)));
+const medirTodo = async () => {
+  for (const sensor of ETIQUETAS_SENSORES) await medir(sensor);
+  await waitFor(() => expect(screen.getAllByText('✓ Medición terminada correctamente')).toHaveLength(4));
+};
+const irAlPaso3 = async () => {
+  await medirTodo();
+  await fireEvent.press(screen.getByText('Continuar →'));
+  await screen.findByText('PASO 3 - TU OBJETIVO');
+};
 const irAlUltimoPaso = async (dias = 3) => {
-  await fireEvent.press(screen.getByText('Continuar →')); // paso 3
+  await irAlPaso3(); // paso 3
   await fireEvent.press(screen.getByLabelText(`${dias} ${dias === 1 ? 'día' : 'días'} a la semana`));
   await fireEvent.press(screen.getByText('Continuar →')); // paso 4
   await fireEvent.press(screen.getByText('Continuar →')); // paso 5
@@ -500,7 +521,7 @@ describe('envío de la evaluación', () => {
       telefono: '+56 9 1234 5678', plan_membresia: 'Plan Estudiante',
     });
     expect(cuerpo.entrenamiento).toMatchObject({ diasSemana: 3, objetivo: 'Fuerza', experiencia: 'Intermedio' });
-    expect(cuerpo.mediciones.masaMuscular).toBe('31.2');
+    expect(cuerpo.mediciones.masaMuscular).toBe('35.0');
     expect(cuerpo.totem_serial).toBe('TOTEM-GIM-01');
     expect(cuerpo.totem_sucursal).toBe('Campus San Joaquín');
     expect(Number.isNaN(Date.parse(cuerpo.inicio))).toBe(false);
@@ -567,7 +588,7 @@ describe('campos del cuestionario y las mediciones del modelo', () => {
     // Arrange
     mockApi(registrado());
     await llegarAlPaso2();
-    await fireEvent.press(screen.getByText('Continuar →')); // paso 3
+    await irAlPaso3();
 
     // Act
     await fireEvent.press(screen.getByText('Continuar →'));
@@ -595,7 +616,7 @@ describe('campos del cuestionario y las mediciones del modelo', () => {
     // Arrange
     mockApi({ ...registrado(), 'POST /api/evaluaciones': { body: { status: 'success' } } });
     await llegarAlPaso2();
-    await fireEvent.press(screen.getByText('Continuar →')); // paso 3
+    await irAlPaso3();
     await fireEvent.press(screen.getByLabelText('3 días a la semana'));
     await fireEvent.press(screen.getByText('Continuar →')); // paso 4
     await fireEvent.changeText(screen.getByLabelText('Lesiones previas'), '  Esguince de tobillo en 2025 ');
@@ -627,7 +648,7 @@ describe('campos del cuestionario y las mediciones del modelo', () => {
     // Arrange
     mockApi(registrado());
     await llegarAlPaso2();
-    await fireEvent.press(screen.getByText('Continuar →'));
+    await irAlPaso3();
     await fireEvent.press(screen.getByLabelText('4 días a la semana'));
     await fireEvent.press(screen.getByText('Cancelar evaluación'));
     await botonDeAlerta('¿Cancelar la evaluación?', 'Sí, cancelar').onPress?.();
@@ -639,10 +660,268 @@ describe('campos del cuestionario y las mediciones del modelo', () => {
     await fireEvent.press(screen.getByText(CONSENTIMIENTO));
     await fireEvent.press(screen.getByText('Continuar →'));
     await screen.findByText('PASO 2 - ESTACIÓN DE SENSORES');
-    await fireEvent.press(screen.getByText('Continuar →'));
+    await irAlPaso3();
     await fireEvent.press(screen.getByText('Continuar →'));
 
     // Assert
     expect(alerta).toHaveBeenCalledWith('Falta un dato', expect.any(String));
+  });
+});
+
+describe('mediciones con sensores (R.52, R.55, R.62, R.63, R.64, R.65)', () => {
+  const enviarEvaluacion = async () => {
+    await irAlUltimoPaso();
+    await fireEvent.press(screen.getByText('Registrar mi ingreso'));
+    await waitFor(() => expect(llamadas('POST /api/evaluaciones')).toHaveLength(1));
+    return JSON.parse(llamadas('POST /api/evaluaciones')[0][1].body);
+  };
+  const conEnvio = () => mockApi({ ...registrado(), 'POST /api/evaluaciones': { body: { status: 'success' } } });
+
+  test('cada sensor muestra sus instrucciones antes de medir (R.63)', async () => {
+    // Arrange / Act
+    mockApi(registrado());
+    await llegarAlPaso2();
+
+    // Assert
+    expect(screen.getByText(/coloca el brazalete a la altura del corazón/)).toBeTruthy();
+    expect(screen.getByText(/Ajusta la banda sobre el pecho/)).toBeTruthy();
+    expect(screen.getByText(/Súbete descalzo y quieto/)).toBeTruthy();
+    expect(screen.getByText(/Realiza el ejercicio indicado/)).toBeTruthy();
+  });
+
+  test('al empezar no hay valores inventados: todo está sin medir', async () => {
+    // Arrange / Act
+    mockApi(registrado());
+    await llegarAlPaso2();
+
+    // Assert
+    expect(screen.getAllByText('--', { exact: false }).length).toBeGreaterThanOrEqual(9);
+    expect(screen.queryByText('✓ Medición terminada correctamente')).toBeNull();
+  });
+
+  test('una medición correcta muestra sus valores y avisa que terminó bien (R.64)', async () => {
+    // Arrange
+    mockApi(registrado());
+    await llegarAlPaso2();
+
+    // Act
+    await medir('Tensiómetro');
+
+    // Assert
+    expect(await screen.findByText('✓ Medición terminada correctamente')).toBeTruthy();
+    expect(screen.getByText(/115/)).toBeTruthy();    // sistólica con el simulador fijo
+    expect(screen.getByLabelText('Volver a medir Tensiómetro')).toBeTruthy();
+  });
+
+  test('si faltan mediciones pregunta antes de continuar y nombra los sensores pendientes', async () => {
+    // Arrange
+    mockApi(registrado());
+    await llegarAlPaso2();
+    await medir('Tensiómetro');
+    await screen.findByText('✓ Medición terminada correctamente');
+
+    // Act
+    await fireEvent.press(screen.getByText('Continuar →'));
+
+    // Assert
+    const [titulo, mensaje] = alerta.mock.calls.find(([t]) => t === 'Faltan mediciones') as [string, string];
+    expect(titulo).toBe('Faltan mediciones');
+    expect(mensaje).toContain('Banda de pecho, Balanza, Prueba de esfuerzo');
+    expect(mensaje).not.toContain('Tensiómetro');
+    expect(screen.getByText('PASO 2 - ESTACIÓN DE SENSORES')).toBeTruthy();
+  });
+
+  test('"Volver a medir" mantiene al usuario en el paso 2', async () => {
+    // Arrange
+    mockApi(registrado());
+    await llegarAlPaso2();
+    await fireEvent.press(screen.getByText('Continuar →'));
+
+    // Act
+    const boton = botonDeAlerta('Faltan mediciones', 'Volver a medir');
+
+    // Assert
+    expect(boton.style).toBe('cancel');
+    expect(screen.getByText('PASO 2 - ESTACIÓN DE SENSORES')).toBeTruthy();
+  });
+
+  test('"Continuar sin ellas" avanza y la evaluación se envía sin esos datos', async () => {
+    // Arrange
+    conEnvio();
+    await llegarAlPaso2();
+    await fireEvent.press(screen.getByText('Continuar →'));
+
+    // Act
+    await botonDeAlerta('Faltan mediciones', 'Continuar sin ellas').onPress?.();
+    await screen.findByText('PASO 3 - TU OBJETIVO');
+    await fireEvent.press(screen.getByLabelText('3 días a la semana'));
+    await fireEvent.press(screen.getByText('Continuar →'));
+    await fireEvent.press(screen.getByText('Continuar →'));
+    await fireEvent.press(screen.getByText('Registrar mi ingreso'));
+
+    // Assert
+    await waitFor(() => expect(llamadas('POST /api/evaluaciones')).toHaveLength(1));
+    const cuerpo = JSON.parse(llamadas('POST /api/evaluaciones')[0][1].body);
+    expect(cuerpo.mediciones).toEqual({});
+    expect(cuerpo.dispositivos).toEqual({});
+    expect(cuerpo.errores_medicion).toEqual([]);
+  });
+
+  test('con todos los sensores medidos avanza sin preguntar', async () => {
+    // Arrange
+    mockApi(registrado());
+    await llegarAlPaso2();
+
+    // Act
+    await irAlPaso3();
+
+    // Assert
+    expect(alerta).not.toHaveBeenCalledWith('Faltan mediciones', expect.anything(), expect.anything());
+  });
+
+  test('la evaluación incluye el dispositivo, su calibración y la hora de cada medición (R.58, R.59, R.60)', async () => {
+    // Arrange
+    usarSensores({ calibracion: { balanza: 'vencida', banda_pecho: 'desconocida' } });
+    conEnvio();
+    await llegarAlPaso2();
+
+    // Act
+    const cuerpo = await enviarEvaluacion();
+
+    // Assert
+    expect(Object.keys(cuerpo.dispositivos).sort()).toEqual(['balanza', 'banda_pecho', 'prueba_esfuerzo', 'tensiometro']);
+    expect(cuerpo.dispositivos.balanza).toMatchObject({ id: 'SIM-BALANZA', calibracion: 'vencida' });
+    expect(cuerpo.dispositivos.tensiometro.calibracion).toBe('vigente');
+    expect(cuerpo.dispositivos.banda_pecho.calibracion).toBe('desconocida');
+    for (const d of Object.values(cuerpo.dispositivos) as { capturado_en: string }[]) {
+      expect(Number.isNaN(Date.parse(d.capturado_en))).toBe(false);
+    }
+    expect(cuerpo.mediciones).toMatchObject({ presionSys: 115, presionDia: 75, fcReposo: 80, peso: '85.0' });
+  });
+
+  test('una medición que falla muestra el motivo y se puede reintentar (R.55)', async () => {
+    // Arrange
+    usarSensores({ guion: { tensiometro: ['timeout', null] } });
+    mockApi(registrado());
+    await llegarAlPaso2();
+
+    // Act
+    await medir('Tensiómetro');
+
+    // Assert
+    expect(await screen.findByText(/No se pudo medir: El sensor no respondió a tiempo/)).toBeTruthy();
+    expect(screen.queryByText('✓ Medición terminada correctamente')).toBeNull();
+    await medir('Tensiómetro');                   // el botón ahora dice "Reintentar"
+    expect(await screen.findByText('✓ Medición terminada correctamente')).toBeTruthy();
+    expect(screen.queryByText(/No se pudo medir/)).toBeNull();
+  });
+
+  test('los errores durante la medición se envían con la evaluación (R.65)', async () => {
+    // Arrange
+    usarSensores({ guion: { tensiometro: ['movimiento', null], balanza: ['timeout', null] } });
+    conEnvio();
+    await llegarAlPaso2();
+    await medir('Tensiómetro');
+    await screen.findByText(/Se detectó movimiento/);
+    await medir('Balanza');
+    await screen.findByText(/El sensor no respondió a tiempo/);
+
+    // Act
+    const cuerpo = await enviarEvaluacion();
+
+    // Assert
+    expect(cuerpo.errores_medicion).toHaveLength(2);
+    expect(cuerpo.errores_medicion[0]).toMatchObject({ sensor: 'tensiometro', codigo: 'movimiento', mensaje: 'Se detectó movimiento durante la medición' });
+    expect(cuerpo.errores_medicion[1]).toMatchObject({ sensor: 'balanza', codigo: 'timeout' });
+    expect(Number.isNaN(Date.parse(cuerpo.errores_medicion[0].ocurrido_en))).toBe(false);
+  });
+
+  test('una lectura físicamente imposible se rechaza, no se guarda y se pide repetir (R.53, R.62)', async () => {
+    // Arrange
+    usarSensores({ guion: { tensiometro: ['valor_invalido', null] } });
+    conEnvio();
+    await llegarAlPaso2();
+
+    // Act
+    await medir('Tensiómetro');
+
+    // Assert
+    expect(await screen.findByText(/Presión sistólica 999 mmHg está fuera de lo posible/)).toBeTruthy();
+    expect(screen.queryByText('✓ Medición terminada correctamente')).toBeNull();
+    const cuerpo = await enviarEvaluacion();   // al medir todo, el tensiómetro se repite y ahora entrega un valor válido
+    expect(cuerpo.mediciones.presionSys).toBe(115);
+    expect(cuerpo.errores_medicion).toHaveLength(1);
+    expect(cuerpo.errores_medicion[0]).toMatchObject({ sensor: 'tensiometro', codigo: 'lectura_invalida' });
+  });
+
+  test('un sensor desconectado se detecta al entrar y se puede reconectar (R.52)', async () => {
+    // Arrange
+    const sensores = usarSensores({ desconectados: ['banda_pecho'] });
+    mockApi(registrado());
+    await llegarAlPaso2();
+
+    // Act
+    const aviso = await screen.findByText(/Sensor desconectado\. Revisa que esté encendido/);
+    (sensores.banda_pecho as unknown as { conectar: () => void }).conectar();
+    await fireEvent.press(screen.getByText('Reintentar conexión'));
+
+    // Assert
+    expect(aviso).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText(/Sensor desconectado/)).toBeNull());
+    expect(screen.getByLabelText('Medir Banda de pecho')).toBeTruthy();
+  });
+
+  test('si el sensor sigue desconectado al reintentar, el aviso se mantiene', async () => {
+    // Arrange
+    usarSensores({ desconectados: ['balanza'] });
+    mockApi(registrado());
+    await llegarAlPaso2();
+    await screen.findByText(/Sensor desconectado/);
+
+    // Act
+    await fireEvent.press(screen.getByText('Reintentar conexión'));
+
+    // Assert
+    expect(await screen.findByText(/Sensor desconectado/)).toBeTruthy();
+  });
+
+  test('un sensor que se desconecta durante la medición queda registrado como error', async () => {
+    // Arrange
+    const sensores = usarSensores();
+    conEnvio();
+    await llegarAlPaso2();
+    (sensores.tensiometro as unknown as { desconectar: () => void }).desconectar();
+
+    // Act
+    await medir('Tensiómetro');
+
+    // Assert
+    expect(await screen.findByText(/Sensor desconectado/)).toBeTruthy();
+    expect(screen.getByText('Reintentar conexión')).toBeTruthy();
+  });
+
+  test('al cancelar la evaluación se borran las mediciones y los errores', async () => {
+    // Arrange
+    usarSensores({ guion: { tensiometro: ['timeout', null] } });
+    mockApi(registrado());
+    await llegarAlPaso2();
+    await medir('Tensiómetro');
+    await screen.findByText(/No se pudo medir/);
+    await medir('Balanza');
+    await screen.findByText('✓ Medición terminada correctamente');
+    await fireEvent.press(screen.getByText('Cancelar evaluación'));
+    await botonDeAlerta('¿Cancelar la evaluación?', 'Sí, cancelar').onPress?.();
+    await screen.findByText('PASO 1 - IDENTIFICACIÓN');
+
+    // Act
+    await buscar();
+    await screen.findByText(/Hola, Ana/);
+    await fireEvent.press(screen.getByText(CONSENTIMIENTO));
+    await fireEvent.press(screen.getByText('Continuar →'));
+    await screen.findByText('PASO 2 - ESTACIÓN DE SENSORES');
+
+    // Assert
+    expect(screen.queryByText('✓ Medición terminada correctamente')).toBeNull();
+    expect(screen.queryByText(/No se pudo medir/)).toBeNull();
   });
 });
