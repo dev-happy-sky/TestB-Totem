@@ -231,3 +231,128 @@ describe('PasoMediciones', () => {
     expect(colorDe(/^115 /)).toBe('#0f172a');
   });
 });
+
+describe('registro manual del oxímetro', () => {
+  const abrir = async (nombre = 'Oxímetro') => fireEvent.press(screen.getByLabelText(`Ingresar manualmente ${nombre}`));
+  const escribir = async (etiqueta: string, texto: string) => fireEvent.changeText(screen.getByLabelText(etiqueta), texto);
+
+  test('solo los oxímetros ofrecen ingresar los valores a mano', async () => {
+    // Arrange / Act
+    await montar();
+
+    // Assert
+    expect(screen.getByLabelText('Ingresar manualmente Oxímetro')).toBeTruthy();
+    expect(screen.getByLabelText('Ingresar manualmente Oxímetro (FC de recuperación)')).toBeTruthy();
+    expect(screen.queryByLabelText('Ingresar manualmente Tensiómetro')).toBeNull();
+    expect(screen.queryByLabelText('Ingresar manualmente Balanza')).toBeNull();
+  });
+
+  test('registra SpO₂ y FC escritos a mano como una lectura del dispositivo "manual"', async () => {
+    // Arrange
+    const { alLeer, alFallar } = await montar();
+    await abrir();
+
+    // Act
+    await escribir('SpO₂ manual', '97');
+    await escribir('FC REPOSO manual', '72');
+    await fireEvent.press(screen.getByLabelText('Registrar valores de Oxímetro'));
+
+    // Assert
+    await screen.findByText('✓ Medición terminada correctamente');
+    expect(alLeer).toHaveBeenCalledTimes(1);
+    expect(alLeer.mock.calls[0][0]).toMatchObject({
+      sensor: 'oximetro', valores: { spo2: 97, fcReposo: 72 }, dispositivo: { id: 'manual', calibracion: 'desconocida' },
+    });
+    expect(alFallar).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('SpO₂ manual')).toBeNull();
+  });
+
+  test('registra la FC de recuperación a mano', async () => {
+    // Arrange
+    const { alLeer } = await montar();
+    await abrir('Oxímetro (FC de recuperación)');
+
+    // Act
+    await escribir('FC RECUP. manual', '110');
+    await fireEvent.press(screen.getByLabelText('Registrar valores de Oxímetro (FC de recuperación)'));
+
+    // Assert
+    await screen.findByText('✓ Medición terminada correctamente');
+    expect(alLeer.mock.calls[0][0]).toMatchObject({ sensor: 'oximetro_recuperacion', valores: { fcRecup: 110 } });
+  });
+
+  test('acepta un número con coma o espacios y rechaza uno que no es entero', async () => {
+    // Arrange
+    const { alLeer } = await montar();
+    await abrir();
+    await escribir('SpO₂ manual', '96,5');
+    await escribir('FC REPOSO manual', '72');
+
+    // Act
+    await fireEvent.press(screen.getByLabelText('Registrar valores de Oxímetro'));
+
+    // Assert
+    expect((await screen.findByRole('alert')).props.children).toContain('número entero');
+    expect(alLeer).not.toHaveBeenCalled();
+  });
+
+  test('con un campo vacío pide completarlo y no registra nada', async () => {
+    // Arrange
+    const { alLeer } = await montar();
+    await abrir();
+    await escribir('SpO₂ manual', '97');
+
+    // Act
+    await fireEvent.press(screen.getByLabelText('Registrar valores de Oxímetro'));
+
+    // Assert
+    expect((await screen.findByRole('alert')).props.children).toContain('FC REPOSO');
+    expect(alLeer).not.toHaveBeenCalled();
+  });
+
+  test('un valor imposible (SpO₂ 150) se rechaza con la misma validación que el sensor', async () => {
+    // Arrange
+    const { alLeer } = await montar();
+    await abrir();
+    await escribir('SpO₂ manual', '150');
+    await escribir('FC REPOSO manual', '72');
+
+    // Act
+    await fireEvent.press(screen.getByLabelText('Registrar valores de Oxímetro'));
+
+    // Assert
+    expect((await screen.findByRole('alert')).props.children).toContain('fuera de lo posible');
+    expect(alLeer).not.toHaveBeenCalled();
+  });
+
+  test('cancelar cierra el ingreso sin registrar', async () => {
+    // Arrange
+    const { alLeer } = await montar();
+    await abrir();
+
+    // Act
+    await fireEvent.press(screen.getByLabelText('Cancelar ingreso manual de Oxímetro'));
+
+    // Assert
+    expect(screen.queryByLabelText('SpO₂ manual')).toBeNull();
+    expect(alLeer).not.toHaveBeenCalled();
+  });
+
+  test('funciona aunque el oxímetro esté desconectado', async () => {
+    // Arrange
+    const sensores = crearSensoresSimulados({ latenciaMs: 0, azar: () => 0.5 });
+    const desconectado: Sensor = { tipo: 'oximetro', disponible: async () => false, medir: async () => { throw new Error('x'); } };
+    const { alLeer } = await montar({ ...sensores, oximetro: desconectado });
+    await screen.findByText(/Sensor desconectado/);
+
+    // Act
+    await abrir();
+    await escribir('SpO₂ manual', '98');
+    await escribir('FC REPOSO manual', '65');
+    await fireEvent.press(screen.getByLabelText('Registrar valores de Oxímetro'));
+
+    // Assert
+    await waitFor(() => expect(alLeer).toHaveBeenCalledTimes(1));
+    expect(alLeer.mock.calls[0][0].dispositivo.id).toBe('manual');
+  });
+});

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import {
   ErrorSensor, ETIQUETA_SENSOR, INSTRUCCIONES, TIPOS_SENSOR, validarLectura,
@@ -57,8 +57,15 @@ const CAMPOS: Record<TipoSensor, Campo[]> = {
   prueba_esfuerzo: [{ clave: 'vo2Max', etiqueta: 'VO₂ MÁX', unidad: 'ml/kg·min' }],
 };
 
+// Sensores cuyos valores también pueden registrarse a mano (el oxímetro se lee de la pantalla del dispositivo).
+const MANUALES: readonly TipoSensor[] = ['oximetro', 'oximetro_recuperacion'];
+export const ID_DISPOSITIVO_MANUAL = 'manual';
+
+type Manual = { valores: Record<string, string>; error: string };
+
 export default function PasoMediciones({ sensores, lecturas, onLectura, onError }: Props) {
   const [estados, setEstados] = useState<Partial<Record<TipoSensor, Estado>>>({});
+  const [manuales, setManuales] = useState<Partial<Record<TipoSensor, Manual>>>({});
 
   const poner = (tipo: TipoSensor, estado: Estado) => setEstados((previo) => ({ ...previo, [tipo]: estado }));
 
@@ -99,6 +106,37 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError 
     }
   };
 
+  const abrirManual = (tipo: TipoSensor) => setManuales((previo) => ({ ...previo, [tipo]: { valores: {}, error: '' } }));
+  const cerrarManual = (tipo: TipoSensor) => setManuales((previo) => ({ ...previo, [tipo]: undefined }));
+  const escribirManual = (tipo: TipoSensor, clave: string, texto: string) =>
+    setManuales((previo) => ({ ...previo, [tipo]: { valores: { ...previo[tipo]?.valores, [clave]: texto }, error: '' } }));
+
+  // Registro manual: el valor se lee de la pantalla del oxímetro. Pasa por las mismas validaciones que una lectura
+  // automática y queda marcado con el dispositivo "manual" para que el encargado sepa que no vino del sensor.
+  const registrarManual = (tipo: TipoSensor) => {
+    const valores: ValoresMedidos = {};
+    for (const campo of CAMPOS[tipo]) {
+      const texto = (manuales[tipo]?.valores[campo.clave] ?? '').trim().replace(',', '.');
+      const numero = Number(texto);
+      if (!texto || !Number.isInteger(numero)) {
+        setManuales((previo) => ({ ...previo, [tipo]: { valores: previo[tipo]?.valores ?? {}, error: `${campo.etiqueta}: ingresa un número entero` } }));
+        return;
+      }
+      (valores as Record<string, number>)[campo.clave] = numero;
+    }
+    const lectura: Lectura = {
+      sensor: tipo, valores, dispositivo: { id: ID_DISPOSITIVO_MANUAL, calibracion: 'desconocida' }, capturadoEn: new Date().toISOString(),
+    };
+    const problema = validarLectura(lectura);
+    if (problema) {
+      setManuales((previo) => ({ ...previo, [tipo]: { valores: previo[tipo]?.valores ?? {}, error: problema } }));
+      return;
+    }
+    onLectura(lectura);
+    poner(tipo, { tipo: 'pendiente' });
+    cerrarManual(tipo);
+  };
+
   return (
     <View style={estilos.grid}>
       {TIPOS_SENSOR.map((tipo) => {
@@ -137,6 +175,39 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError 
               <Text style={estilos.exito}>✓ Medición terminada correctamente</Text>
             )}
 
+            {MANUALES.includes(tipo) && estado.tipo !== 'midiendo' && (manuales[tipo] ? (
+              <View style={estilos.manual}>
+                <View style={estilos.fila}>
+                  {CAMPOS[tipo].map((campo) => (
+                    <View key={campo.clave} style={estilos.campo}>
+                      <Text style={estilos.etiqueta}>{campo.etiqueta} ({campo.unidad})</Text>
+                      <TextInput
+                        style={estilos.entrada} keyboardType="number-pad" maxLength={3}
+                        value={manuales[tipo]?.valores[campo.clave] ?? ''}
+                        onChangeText={(texto) => escribirManual(tipo, campo.clave, texto)}
+                        accessibilityLabel={`${campo.etiqueta} manual`}
+                      />
+                    </View>
+                  ))}
+                </View>
+                {!!manuales[tipo]?.error && <Text style={estilos.error} accessibilityRole="alert">{manuales[tipo]?.error}</Text>}
+                <View style={estilos.fila}>
+                  <TouchableOpacity style={estilos.boton} onPress={() => registrarManual(tipo)} accessibilityRole="button"
+                                    accessibilityLabel={`Registrar valores de ${etiqueta}`}>
+                    <Text style={estilos.botonTexto}>Registrar valores</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[estilos.boton, estilos.botonSecundario]} onPress={() => cerrarManual(tipo)} accessibilityRole="button"
+                                    accessibilityLabel={`Cancelar ingreso manual de ${etiqueta}`}>
+                    <Text style={estilos.botonSecundarioTexto}>Cancelar</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity onPress={() => abrirManual(tipo)} accessibilityRole="button" accessibilityLabel={`Ingresar manualmente ${etiqueta}`}>
+                <Text style={estilos.enlace}>Ingresar valores manualmente</Text>
+              </TouchableOpacity>
+            ))}
+
             {estado.tipo === 'midiendo' ? (
               <Text style={estilos.midiendo}>Midiendo…</Text>
             ) : estado.tipo === 'desconectado' ? (
@@ -170,4 +241,9 @@ const estilos = StyleSheet.create({
   midiendo: { color: '#ea580c', fontWeight: 'bold', marginTop: 8 },
   boton: { backgroundColor: '#ea580c', paddingVertical: 10, paddingHorizontal: 18, borderRadius: 24, alignSelf: 'flex-start', marginTop: 8 },
   botonTexto: { color: '#fff', fontWeight: 'bold' },
+  botonSecundario: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', marginLeft: 8 },
+  botonSecundarioTexto: { color: '#475569', fontWeight: 'bold' },
+  enlace: { color: '#475569', fontSize: 13, textDecorationLine: 'underline', marginTop: 4 },
+  manual: { marginTop: 4, padding: 10, borderRadius: 8, backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0' },
+  entrada: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, fontSize: 18, minWidth: 80, color: '#0f172a', backgroundColor: '#fff' },
 });
