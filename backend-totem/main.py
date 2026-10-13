@@ -18,6 +18,7 @@ import jwt
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, Session
 
+from conexion import normalizar_url
 from credenciales import hash_password, verify_password
 from migraciones import agregar_columnas_faltantes, consolidar_identidad
 from models import AuditLog, Base, PersonalGimnasio, SesionTotem
@@ -42,11 +43,11 @@ DATABASE_URL = os.getenv(
     "postgresql://postgres:admin@localhost:5432/totem_db"
 )
 
-# Render a veces usa URL 'postgres://' que SQLAlchemy 1.4+ no acepta. Este reemplazo lo previene:
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+# Neon/Render entregan 'postgres://' o 'postgresql://': se fija el driver psycopg2 (SQLAlchemy 2.1 usaría psycopg v3).
+DATABASE_URL = normalizar_url(DATABASE_URL)
 
-engine = create_engine(DATABASE_URL)
+# pool_pre_ping: en Neon el cómputo se suspende por inactividad y cierra las conexiones; así se reconecta solo
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # --- 2. TABLAS ---
