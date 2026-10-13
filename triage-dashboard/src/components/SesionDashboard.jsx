@@ -6,6 +6,8 @@ import { MENSAJE_SIN_RESPUESTA, describirServidor, mensajeErrorLogin } from '../
 export const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://totem-backend-g6yh.onrender.com';
 const INACTIVIDAD_MS = 15 * 60 * 1000; // R.174: cierre de sesión tras 15 min sin actividad
 const CLAVE_SESION = 'totem_sesion';
+// Con el backend sin seguridad (SEGURIDAD_ACTIVA=false) no hay login: el panel se abre directo.
+const SESION_ABIERTA = { token: null, rol: 'admin', usuario: 'Sin seguridad' };
 
 export default function SesionDashboard() {
   const [sesion, setSesion] = useState(null);
@@ -14,6 +16,7 @@ export default function SesionDashboard() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
+  const [seguridad, setSeguridad] = useState(null);   // null = consultando al backend
 
   // sessionStorage: el token no sobrevive al cerrar la pestaña (R.173)
   useEffect(() => {
@@ -22,6 +25,16 @@ export default function SesionDashboard() {
       if (guardada) setSesion(JSON.parse(guardada));
     } catch { /* sin almacenamiento disponible */ }
     setListo(true);
+  }, []);
+
+  // El backend informa si exige login. Si no responde o no tiene este endpoint (versión antigua), se asume que sí.
+  useEffect(() => {
+    let activo = true;
+    fetch(`${BACKEND_URL}/api/configuracion`)
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((config) => { if (activo) setSeguridad(config?.seguridad !== false); })
+      .catch(() => { if (activo) setSeguridad(true); });
+    return () => { activo = false; };
   }, []);
 
   const cerrarSesion = useCallback((mensaje = '') => {
@@ -73,7 +86,11 @@ export default function SesionDashboard() {
     }
   };
 
-  if (!listo) return null;
+  if (!listo || seguridad === null) return null;
+
+  if (seguridad === false) {
+    return <DashboardAptitud sesion={SESION_ABIERTA} sinSeguridad onSesionInvalida={() => {}} onLogout={() => {}} />;
+  }
 
   if (sesion) {
     return <DashboardAptitud sesion={sesion} onSesionInvalida={() => cerrarSesion('Tu sesión expiró. Ingresa nuevamente.')} onLogout={() => cerrarSesion()} />;
