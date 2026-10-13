@@ -39,12 +39,23 @@ export class ErrorSensor extends Error {
   }
 }
 
+/** Último valor que envía el sensor, para mostrarlo mientras el usuario se coloca (no es una medición registrada). */
+export type LecturaEnVivo = {
+  valida: boolean;
+  spo2?: number;
+  fc?: number;
+  /** Por qué no hay valor: el sensor no está conectado, no envía datos o no detecta el dedo. */
+  motivo?: 'desconectado' | 'sin_senal' | 'sin_dedo';
+};
+
 export interface Sensor {
   readonly tipo: TipoSensor;
   /** ¿El sensor está conectado y listo? (R.52). */
   disponible(): Promise<boolean>;
   /** Toma una medición. Lanza `ErrorSensor` si falla. */
   medir(): Promise<Lectura>;
+  /** Opcional: lectura continua para mostrar en pantalla. Nunca lanza: si falla, devuelve `valida: false`. */
+  enVivo?(): Promise<LecturaEnVivo>;
 }
 
 export type Sensores = Record<TipoSensor, Sensor>;

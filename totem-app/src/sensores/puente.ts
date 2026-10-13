@@ -1,5 +1,5 @@
 import {
-  ErrorSensor, type CodigoError, type Lectura, type Sensor, type TipoSensor,
+  ErrorSensor, type CodigoError, type Lectura, type LecturaEnVivo, type Sensor, type TipoSensor,
 } from './tipos';
 
 /**
@@ -46,6 +46,21 @@ export class SensorOximetroPuente implements Sensor {
       return Boolean(((await respuesta.json()) as { conectado?: boolean }).conectado);
     } catch {
       return false;
+    }
+  }
+
+  /** Último valor que envía el oxímetro (GET /lectura), para mostrarlo en vivo. */
+  async enVivo(): Promise<LecturaEnVivo> {
+    try {
+      const respuesta = await this.pedir('/lectura', 'GET', this.config.timeoutEstadoMs ?? 3000);
+      if (!respuesta.ok) return { valida: false, motivo: 'desconectado' };
+      const cuerpo = (await respuesta.json()) as { valida?: boolean; spo2?: number | null; fc?: number | null; motivo?: LecturaEnVivo['motivo'] | null };
+      if (cuerpo.valida && typeof cuerpo.spo2 === 'number' && typeof cuerpo.fc === 'number') {
+        return { valida: true, spo2: cuerpo.spo2, fc: cuerpo.fc };
+      }
+      return { valida: false, motivo: cuerpo.motivo ?? 'sin_senal' };
+    } catch {
+      return { valida: false, motivo: 'desconectado' };
     }
   }
 

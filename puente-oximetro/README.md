@@ -35,6 +35,7 @@ En Windows (PowerShell): `$env:OXIMETRO_ID="..."; python -m puente`.
 ## Endpoints
 
 - `GET /estado` → `{ "conectado": true, "dispositivo": "...", "ultimo_paquete_hace_s": 0.4 }`
+- `GET /lectura` → lo último que envía el oxímetro, para mostrarlo en vivo: `{ "conectado", "valida", "spo2", "fc", "indice_perfusion", "motivo" }`. `motivo` es `desconectado`, `sin_senal` (no llegan datos hace más de 3 s) o `sin_dedo` cuando `valida` es `false`. No es una medición: no se estabiliza ni se guarda.
 - `POST /medir` → espera una medición estable y responde `{ "spo2", "fc", "indice_perfusion", "muestras", "dispositivo": {"id", "calibracion"}, "capturado_en" }`.
   Si falla, responde `{ "codigo", "mensaje" }` con los mismos códigos que entiende la app:
 
@@ -45,6 +46,16 @@ En Windows (PowerShell): `$env:OXIMETRO_ID="..."; python -m puente`.
 | Todo lo que llega es "sin dedo", o hay muy pocas muestras válidas | 422 | `lectura_invalida` |
 | Hay muestras válidas pero no se estabilizan | 422 | `movimiento` |
 | Ya hay otra medición en curso | 409 | `error` |
+
+## Dejarlo siempre encendido (Windows)
+
+El puente se reconecta solo si el oxímetro se apaga o sale de alcance. Para que además arranque con el PC y se levante si se cae:
+
+1. Copia `puente.env.example` a `puente.env` (no se sube a git) y pon el `OXIMETRO_ID`.
+2. Comprueba la configuración: `.\iniciar_puente.ps1 -Verificar`.
+3. Instala el inicio automático (PowerShell, en esta carpeta): `.\instalar_inicio_automatico.ps1`.
+
+Crea la tarea `PuenteOximetro`, que arranca al iniciar sesión y se reinicia si falla. Corre en la sesión del usuario (no como servicio de Windows) porque los servicios no tienen acceso a Bluetooth: el PC del tótem debe iniciar sesión solo al encender. Para quitarla: `.\quitar_inicio_automatico.ps1`. Si PowerShell bloquea los scripts: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 
 ## Conectarlo a la app
 

@@ -4,7 +4,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react-nativ
 
 import PasoMediciones from '../components/paso-mediciones';
 import {
-  crearSensoresSimulados, ErrorSensor, type ErrorMedicion, type Lectura, type Sensor, type Sensores, type TipoSensor,
+  crearSensoresSimulados, ErrorSensor, type ErrorMedicion, type Lectura, type LecturaEnVivo, type Sensor, type Sensores, type TipoSensor,
 } from '../sensores';
 
 jest.mock('@react-native-community/slider', () => 'Slider');
@@ -354,5 +354,82 @@ describe('registro manual del oxímetro', () => {
     // Assert
     await waitFor(() => expect(alLeer).toHaveBeenCalledTimes(1));
     expect(alLeer.mock.calls[0][0].dispositivo.id).toBe('manual');
+  });
+});
+
+describe('lectura en vivo del oxímetro', () => {
+  const montarConVivo = async (secuencia: LecturaEnVivo[]) => {
+    const simulados = crearSensoresSimulados({ latenciaMs: 0, azar: () => 0.5 });
+    let i = 0;
+    const enVivo = jest.fn(async () => secuencia[Math.min(i++, secuencia.length - 1)]);
+    const conVivo = (tipo: 'oximetro' | 'oximetro_recuperacion'): Sensor => ({ ...simulados[tipo], tipo, disponible: simulados[tipo].disponible.bind(simulados[tipo]), medir: simulados[tipo].medir.bind(simulados[tipo]), enVivo });
+    const sensores = { ...simulados, oximetro: conVivo('oximetro'), oximetro_recuperacion: conVivo('oximetro_recuperacion') };
+    await render(
+      <PasoMediciones sensores={sensores} lecturas={{}} onLectura={jest.fn()} onError={jest.fn()} intervaloEnVivoMs={20} />,
+    );
+    return enVivo;
+  };
+
+  test('muestra SpO₂ y FC que va enviando el oxímetro sin pulsar nada', async () => {
+    // Arrange / Act
+    await montarConVivo([{ valida: true, spo2: 97, fc: 72 }]);
+
+    // Assert
+    const tarjeta = await screen.findByLabelText('En vivo Oxímetro');
+    expect(tarjeta).toBeTruthy();
+    expect(await screen.findByText('SpO₂ 97 %  ·  FC 72 lpm')).toBeTruthy();
+    expect(await screen.findByText('FC 72 lpm')).toBeTruthy();   // la tarjeta de recuperación solo muestra FC
+  });
+
+  test('actualiza los valores cuando cambian', async () => {
+    // Arrange / Act
+    await montarConVivo([{ valida: true, spo2: 97, fc: 72 }, { valida: true, spo2: 95, fc: 80 }]);
+
+    // Assert
+    expect(await screen.findByText('SpO₂ 95 %  ·  FC 80 lpm')).toBeTruthy();
+  });
+
+  test.each([
+    ['sin_dedo', 'Coloca el dedo en el oxímetro'],
+    ['sin_senal', 'Sin señal del oxímetro'],
+    ['desconectado', 'Oxímetro no conectado'],
+  ] as const)('cuando no hay valor explica por qué (%s)', async (motivo, texto) => {
+    // Arrange / Act
+    await montarConVivo([{ valida: false, motivo }]);
+
+    // Assert
+    expect((await screen.findAllByText(texto)).length).toBe(2);
+  });
+
+  test('los sensores sin lectura en vivo no muestran el recuadro', async () => {
+    // Arrange / Act
+    await montarConVivo([{ valida: true, spo2: 97, fc: 72 }]);
+    await screen.findByLabelText('En vivo Oxímetro');
+
+    // Assert
+    expect(screen.queryByLabelText('En vivo Tensiómetro')).toBeNull();
+    expect(screen.queryByLabelText('En vivo Balanza')).toBeNull();
+  });
+
+  test('deja de consultar al salir de la pantalla', async () => {
+    // Arrange
+    const enVivo = await montarConVivo([{ valida: true, spo2: 97, fc: 72 }]);
+    await screen.findByLabelText('En vivo Oxímetro');
+
+    // Act
+    await screen.unmount();
+    const llamadas = enVivo.mock.calls.length;
+    await new Promise((r) => setTimeout(r, 80));
+
+    // Assert
+    expect(enVivo.mock.calls.length).toBe(llamadas);
+  });
+
+  test('con sensores simulados (sin lectura en vivo) todo sigue igual', async () => {
+    // Arrange / Act
+    await montar();
+
+    // Assert
+    expect(screen.queryByLabelText('En vivo Oxímetro')).toBeNull();
   });
 });

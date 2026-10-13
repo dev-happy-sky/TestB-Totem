@@ -261,3 +261,68 @@ describe('crearSensores con el oxímetro real', () => {
     expect(() => crearSensores()).toThrow('Usa "simulado" u "oximetro_puente"');
   });
 });
+
+describe('SensorOximetroPuente.enVivo', () => {
+  const LECTURA = { conectado: true, valida: true, spo2: 97, fc: 72, indice_perfusion: 4.1, motivo: null };
+
+  test('consulta /lectura y devuelve SpO₂ y FC', async () => {
+    // Arrange
+    global.fetch = responder(200, LECTURA) as unknown as typeof fetch;
+
+    // Act
+    const vivo = await new SensorOximetroPuente('oximetro', CONFIG).enVivo();
+
+    // Assert
+    expect(vivo).toEqual({ valida: true, spo2: 97, fc: 72 });
+    expect(llamada()[0]).toBe('http://puente:8765/lectura');
+    expect(llamada()[1].method).toBe('GET');
+  });
+
+  test.each(['sin_dedo', 'sin_senal', 'desconectado'])('sin valor válido informa el motivo (%s)', async (motivo) => {
+    // Arrange
+    global.fetch = responder(200, { conectado: true, valida: false, spo2: null, fc: null, indice_perfusion: null, motivo }) as unknown as typeof fetch;
+
+    // Act
+    const vivo = await new SensorOximetroPuente('oximetro', CONFIG).enVivo();
+
+    // Assert
+    expect(vivo).toEqual({ valida: false, motivo });
+  });
+
+  test('si el puente no responde o falla no lanza: informa desconectado', async () => {
+    // Arrange
+    global.fetch = jest.fn().mockRejectedValue(new Error('network')) as unknown as typeof fetch;
+    const sensor = new SensorOximetroPuente('oximetro', CONFIG);
+
+    // Act
+    const caido = await sensor.enVivo();
+    global.fetch = responder(500, {}) as unknown as typeof fetch;
+    const conError = await sensor.enVivo();
+
+    // Assert
+    expect(caido).toEqual({ valida: false, motivo: 'desconectado' });
+    expect(conError).toEqual({ valida: false, motivo: 'desconectado' });
+  });
+
+  test('envía la clave del puente', async () => {
+    // Arrange
+    global.fetch = responder(200, LECTURA) as unknown as typeof fetch;
+
+    // Act
+    await new SensorOximetroPuente('oximetro', { ...CONFIG, clave: 'secreto' }).enVivo();
+
+    // Assert
+    expect(llamada()[1].headers['X-Puente-Key']).toBe('secreto');
+  });
+
+  test('un valor que no es número se descarta', async () => {
+    // Arrange
+    global.fetch = responder(200, { ...LECTURA, spo2: '97' }) as unknown as typeof fetch;
+
+    // Act
+    const vivo = await new SensorOximetroPuente('oximetro', CONFIG).enVivo();
+
+    // Assert
+    expect(vivo.valida).toBe(false);
+  });
+});

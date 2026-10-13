@@ -177,3 +177,43 @@ async def test_iniciar_dos_veces_no_crea_dos_conexiones():
     # Assert
     assert len(fabrica.clientes) == 1
     await oximetro.detener()
+
+
+async def test_un_error_inesperado_al_conectar_no_mata_el_bucle_y_sigue_reintentando():
+    # Arrange: la primera vez la fábrica del cliente lanza algo que no es un fallo normal de conexión
+    llamadas = []
+    fabrica_sana = Fabrica()
+
+    def fabrica(direccion):
+        llamadas.append(direccion)
+        if len(llamadas) == 1:
+            raise RuntimeError("fallo inesperado del adaptador Bluetooth")
+        return fabrica_sana(direccion)
+
+    oximetro = lector(fabrica)
+
+    # Act
+    await oximetro.iniciar()
+    await ceder(40)
+
+    # Assert
+    assert len(llamadas) >= 2
+    assert oximetro.conectado is True
+    await oximetro.detener()
+
+
+async def test_si_se_pierde_la_conexion_vuelve_a_conectar_solo():
+    # Arrange
+    fabrica = Fabrica()
+    oximetro = lector(fabrica)
+    await oximetro.iniciar()
+    await ceder()
+    assert oximetro.conectado is True
+
+    # Act: el oxímetro se apaga y vuelve
+    fabrica.clientes[0].is_connected = False
+    await ceder(40)
+
+    # Assert
+    assert len(fabrica.clientes) >= 2 and oximetro.conectado is True
+    await oximetro.detener()
