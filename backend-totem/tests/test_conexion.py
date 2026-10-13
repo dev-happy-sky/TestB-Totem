@@ -1,3 +1,5 @@
+import os
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
@@ -60,7 +62,10 @@ def test_el_motor_de_una_url_postgresql_usa_psycopg2_sin_importar_la_version_de_
 
 
 @pytest.mark.skipif(main.engine.dialect.name != "postgresql", reason="requiere TEST_DATABASE_URL de PostgreSQL")
-def test_el_backend_se_conecta_con_psycopg2_y_reconecta_solo():
-    # Arrange / Act / Assert
-    assert main.engine.dialect.driver == "psycopg2"
+def test_el_backend_usa_el_driver_de_la_url_y_psycopg2_si_no_se_indica_ninguno():
+    # Arrange: sin "+driver" en la URL manda psycopg2; con "+psycopg" se respeta psycopg 3
+    explicito = "+psycopg://" in os.environ["DATABASE_URL"]
+
+    # Act / Assert
+    assert main.engine.dialect.driver == ("psycopg" if explicito else "psycopg2")
     assert main.engine.pool._pre_ping is True

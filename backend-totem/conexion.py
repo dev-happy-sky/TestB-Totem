@@ -3,6 +3,8 @@
 SQLAlchemy 2.1 cambió el driver por defecto de `postgresql://` de psycopg2 a psycopg (versión 3). Este proyecto usa
 psycopg2 (ver requirements.txt), así que se escribe en la URL: el resultado no depende de la versión de SQLAlchemy
 que instale cada entorno (Render, Neon, tu PC).
+
+Si prefieres psycopg 3 (también está en requirements.txt), escribe `postgresql+psycopg://` en DATABASE_URL: se respeta.
 """
 
 DRIVER = "psycopg2"

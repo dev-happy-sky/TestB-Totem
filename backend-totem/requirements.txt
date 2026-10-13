@@ -4,4 +4,6 @@ websockets>=12.0
 pydantic>=2.10.0
 SQLAlchemy>=2.0.29
 psycopg2-binary>=2.9.11
+# Driver alternativo (psycopg 3): se usa con una URL postgresql+psycopg://. Con postgresql:// el proyecto usa psycopg2.
+psycopg[binary]>=3.2
 PyJWT>=2.8.0
