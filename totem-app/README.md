@@ -25,6 +25,31 @@ In the output, you'll find options to open the app in a
 
 You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
 
+## Oxímetro real (puente Bluetooth)
+
+La app lee el oxímetro a través de `puente-oximetro/` (ver su README). Pasos:
+
+1. Copia `.env.example` a `.env` (no se sube a git) y deja `EXPO_PUBLIC_SENSORES=oximetro_puente` con `EXPO_PUBLIC_PUENTE_OXIMETRO_URL`.
+2. En otra terminal, desde `puente-oximetro/` (PowerShell):
+
+   ```powershell
+   $env:OXIMETRO_ID = "<dirección MAC del oxímetro>"
+   python -m puente
+   ```
+
+3. Reinicia Expo con la caché limpia, porque las variables `EXPO_PUBLIC_*` se incrustan al compilar: `npx expo start -c`.
+4. En el paso de mediciones, **Oxímetro** y **Oxímetro (FC de recuperación)** usan el dispositivo real; tensiómetro, balanza y prueba de esfuerzo siguen simulados.
+
+Según dónde corra la app:
+
+| App en | `EXPO_PUBLIC_PUENTE_OXIMETRO_URL` | Puente |
+| --- | --- | --- |
+| Navegador del mismo PC (`npx expo start --web`) | `http://localhost:8765` | `$env:PUENTE_ORIGENES = "http://localhost:8081"` (sin esto el navegador bloquea la petición por CORS) |
+| Emulador Android | `http://10.0.2.2:8765` | por defecto |
+| Celular o tablet | `http://<IP del PC>:8765` | `$env:PUENTE_HOST = "0.0.0.0"` y `PUENTE_TOKEN` (la misma clave en `EXPO_PUBLIC_PUENTE_OXIMETRO_KEY`) |
+
+Android bloquea `http://` en builds de producción; en desarrollo funciona.
+
 ## Get a fresh project
 
 When you're ready, run:
