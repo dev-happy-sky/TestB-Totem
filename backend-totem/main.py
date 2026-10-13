@@ -1,6 +1,7 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import JSONResponse
 from typing import List, Optional
 import asyncio
 import datetime
@@ -306,6 +307,24 @@ manager = ConnectionManager()
 
 
 # --- 6. RUTAS Y ENDPOINTS ---
+
+# Ruta raíz y de salud (públicas, sin datos): evitan el 404 que Render y los navegadores provocan al consultar "/".
+# `/` responde siempre que el servidor esté arriba; `/salud` además comprueba la conexión con la base de datos.
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+def raiz():
+    return {"servicio": app.title, "estado": "ok"}
+
+
+@app.api_route("/salud", methods=["GET", "HEAD"], include_in_schema=False)
+def salud():
+    try:
+        with engine.connect() as conexion:
+            conexion.execute(text("SELECT 1"))
+    except Exception:
+        # Sin detalles del error: no se expone nada de la base de datos.
+        return JSONResponse(status_code=503, content={"estado": "sin base de datos"})
+    return {"estado": "ok"}
+
 
 # Lo consulta el dashboard para saber si debe pedir login. No expone nada sensible.
 @app.get("/api/configuracion")
