@@ -18,14 +18,17 @@ describe('resumirDispositivos (R.58, R.59, R.60)', () => {
   test('los ordena como están en el tótem, sin importar cómo lleguen', () => {
     // Arrange
     const dispositivos = {
-      prueba_esfuerzo: { id: 'D' }, balanza: { id: 'C' }, tensiometro: { id: 'A' }, banda_pecho: { id: 'B' },
+      banda_pecho: { id: 'F' }, oximetro_recuperacion: { id: 'E' }, prueba_esfuerzo: { id: 'D' },
+      balanza: { id: 'C' }, oximetro: { id: 'B' }, tensiometro: { id: 'A' },
     };
 
     // Act
     const orden = resumirDispositivos(dispositivos).map((d) => d.id);
 
     // Assert
-    expect(orden).toEqual(['A', 'B', 'C', 'D']);
+    expect(orden).toEqual(['A', 'B', 'C', 'D', 'E', 'F']);
+    expect(resumirDispositivos({ oximetro: { id: 'X' }, oximetro_recuperacion: { id: 'Y' } }).map((d) => d.etiqueta))
+      .toEqual(['Oxímetro', 'Oxímetro (FC de recuperación)']);
   });
 
   test('marca la calibración vencida', () => {
@@ -44,13 +47,13 @@ describe('resumirDispositivos (R.58, R.59, R.60)', () => {
 
   test('un dispositivo incompleto o desconocido no rompe el resumen', () => {
     // Arrange
-    const dispositivos = { oximetro: { id: 'OX-1' }, balanza: {} };
+    const dispositivos = { termometro: { id: 'T-1' }, balanza: {} };
 
     // Act
     const resumen = resumirDispositivos(dispositivos);
 
     // Assert
-    expect(resumen.map((d) => d.etiqueta)).toEqual(['Balanza', 'oximetro']);
+    expect(resumen.map((d) => d.etiqueta)).toEqual(['Balanza', 'termometro']);
     expect(resumen[0]).toMatchObject({ id: 'sin identificar', calibracion: 'desconocida', hora: '' });
   });
 
@@ -88,15 +91,15 @@ describe('resumirErrores (R.65)', () => {
 
   test('un código o sensor desconocido usa un texto por defecto', () => {
     // Arrange / Act
-    const [e] = resumirErrores([{ sensor: 'oximetro', codigo: 'raro', mensaje: 'x' }]);
+    const [e] = resumirErrores([{ sensor: 'termometro', codigo: 'raro', mensaje: 'x' }]);
 
     // Assert
-    expect(e).toMatchObject({ sensor: 'oximetro', tipo: ETIQUETA_ERROR.error });
+    expect(e).toMatchObject({ sensor: 'termometro', tipo: ETIQUETA_ERROR.error });
   });
 
   test('todos los códigos que acepta el backend tienen etiqueta', () => {
     // Arrange / Act / Assert
     expect(Object.keys(ETIQUETA_ERROR).sort()).toEqual(['desconectado', 'error', 'lectura_invalida', 'movimiento', 'timeout']);
-    expect(Object.keys(ETIQUETA_SENSOR)).toEqual(['tensiometro', 'banda_pecho', 'balanza', 'prueba_esfuerzo']);
+    expect(Object.keys(ETIQUETA_SENSOR)).toEqual(['tensiometro', 'oximetro', 'balanza', 'prueba_esfuerzo', 'oximetro_recuperacion', 'banda_pecho']);
   });
 });

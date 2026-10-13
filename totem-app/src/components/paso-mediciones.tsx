@@ -30,6 +30,7 @@ const anormal = (clave: keyof ValoresMedidos, valores: ValoresMedidos): boolean 
       return sys >= 130 || sys < 90 || dia >= 85 || dia < 60;
     }
     case 'fcReposo': return v > 100 || v < 60;
+    case 'spo2': return v < 95;
     case 'imc': return v >= 25 || v < 18.5;
     default: return false;
   }
@@ -42,10 +43,11 @@ const CAMPOS: Record<TipoSensor, Campo[]> = {
     { clave: 'presionSys', etiqueta: 'SISTÓLICA', unidad: 'mmHg' },
     { clave: 'presionDia', etiqueta: 'DIASTÓLICA', unidad: 'mmHg' },
   ],
-  banda_pecho: [
+  oximetro: [
+    { clave: 'spo2', etiqueta: 'SpO₂', unidad: '%' },
     { clave: 'fcReposo', etiqueta: 'FC REPOSO', unidad: 'lpm' },
-    { clave: 'fcRecup', etiqueta: 'FC RECUP.', unidad: 'lpm' },
   ],
+  oximetro_recuperacion: [{ clave: 'fcRecup', etiqueta: 'FC RECUP.', unidad: 'lpm' }],
   balanza: [
     { clave: 'peso', etiqueta: 'PESO', unidad: 'kg' },
     { clave: 'imc', etiqueta: 'IMC', unidad: 'kg/m²' },

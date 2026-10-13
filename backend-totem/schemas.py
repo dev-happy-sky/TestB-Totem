@@ -36,6 +36,7 @@ class Mediciones(BaseModel):
     grasa: Optional[str] = None
     vo2Max: Optional[str] = None
     masaMuscular: Optional[str] = None
+    spo2: Optional[int] = None   # saturación de oxígeno (%), del oxímetro
 
 
 class Entrenamiento(BaseModel):
@@ -45,7 +46,8 @@ class Entrenamiento(BaseModel):
     diasSemana: Optional[int] = Field(default=None, ge=1, le=7)
 
 
-SENSORES = ("tensiometro", "banda_pecho", "balanza", "prueba_esfuerzo")
+# `banda_pecho` se conserva para evaluaciones antiguas: hoy la FC la mide el oxímetro.
+SENSORES = ("tensiometro", "oximetro", "oximetro_recuperacion", "balanza", "prueba_esfuerzo", "banda_pecho")
 CODIGOS_ERROR = ("desconectado", "timeout", "movimiento", "lectura_invalida", "error")
 
 
@@ -58,7 +60,7 @@ class Dispositivo(BaseModel):
 
 class ErrorMedicion(BaseModel):
     """Problema ocurrido durante una medición (R.65): sensor desconectado, lectura inválida, etc."""
-    sensor: Literal["tensiometro", "banda_pecho", "balanza", "prueba_esfuerzo"]
+    sensor: Literal["tensiometro", "oximetro", "oximetro_recuperacion", "balanza", "prueba_esfuerzo", "banda_pecho"]
     codigo: Literal["desconectado", "timeout", "movimiento", "lectura_invalida", "error"]
     mensaje: str = Field(max_length=200)
     ocurrido_en: Optional[datetime.datetime] = None

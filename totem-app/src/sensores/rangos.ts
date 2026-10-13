@@ -2,17 +2,19 @@ import type { Lectura, TipoSensor, ValoresMedidos } from './tipos';
 
 export const ETIQUETA_SENSOR: Record<TipoSensor, string> = {
   tensiometro: 'Tensiómetro',
-  banda_pecho: 'Banda de pecho',
+  oximetro: 'Oxímetro',
   balanza: 'Balanza',
   prueba_esfuerzo: 'Prueba de esfuerzo',
+  oximetro_recuperacion: 'Oxímetro (FC de recuperación)',
 };
 
 /** Qué hacer antes de medir (R.63). */
 export const INSTRUCCIONES: Record<TipoSensor, string> = {
   tensiometro: 'Siéntate con la espalda apoyada, coloca el brazalete a la altura del corazón y no hables durante la medición.',
-  banda_pecho: 'Ajusta la banda sobre el pecho, humedece los electrodos y permanece en reposo y en silencio.',
+  oximetro: 'Coloca el dedo índice limpio y seco en el oxímetro, con la mano quieta y apoyada a la altura del corazón, hasta que termine.',
   balanza: 'Súbete descalzo y quieto, con los pies sobre los electrodos y los brazos a los lados.',
-  prueba_esfuerzo: 'Realiza el ejercicio indicado en la pantalla y mantén la banda de pecho puesta.',
+  prueba_esfuerzo: 'Realiza el ejercicio indicado en la pantalla.',
+  oximetro_recuperacion: 'Apenas termines el ejercicio, vuelve a colocar el dedo en el oxímetro y mantén la mano quieta.',
 };
 
 type Rango = { min: number; max: number; etiqueta: string; unidad: string };
@@ -27,6 +29,7 @@ export const RANGOS_POSIBLES: Record<keyof ValoresMedidos, Rango> = {
   presionDia: { min: 30, max: 200, etiqueta: 'Presión diastólica', unidad: 'mmHg' },
   fcReposo: { min: 20, max: 250, etiqueta: 'Frecuencia cardíaca en reposo', unidad: 'lpm' },
   fcRecup: { min: 20, max: 250, etiqueta: 'Frecuencia cardíaca de recuperación', unidad: 'lpm' },
+  spo2: { min: 50, max: 100, etiqueta: 'Saturación de oxígeno', unidad: '%' },
   peso: { min: 20, max: 400, etiqueta: 'Peso', unidad: 'kg' },
   imc: { min: 10, max: 80, etiqueta: 'IMC', unidad: 'kg/m²' },
   grasa: { min: 2, max: 70, etiqueta: 'Grasa corporal', unidad: '%' },

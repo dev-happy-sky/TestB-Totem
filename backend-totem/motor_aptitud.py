@@ -16,7 +16,8 @@ RUTA_POR_DEFECTO = Path(__file__).with_name("reglas_aptitud.json")
 GRAVEDAD = {"leve": 1, "precaucion": 2, "critico": 3}
 CATEGORIA_POR_GRAVEDAD = {0: "A4", 1: "A3", 2: "A2", 3: "A1"}
 GRAVEDAD_POR_CATEGORIA = {c: g for g, c in CATEGORIA_POR_GRAVEDAD.items()}
-VITALES = ("presion_sistolica", "presion_diastolica", "fc_reposo", "imc")
+VITALES = ("presion_sistolica", "presion_diastolica", "fc_reposo", "spo2", "imc")
+OPCIONALES = ("spo2",)   # si no se midió, no es un dato faltante ni baja la confianza
 
 
 class ConfiguracionInvalida(Exception):
@@ -34,6 +35,7 @@ class Entrada:
     fc_reposo: Optional[float] = None
     fc_recuperacion: Optional[float] = None
     imc: Optional[float] = None
+    spo2: Optional[float] = None
     calibracion_vencida: tuple = ()   # sensores (claves de `dispositivos`) con la calibración vencida
 
 
@@ -129,7 +131,8 @@ def _prepara_vitales(entrada: Entrada, cfg: dict):
         etiqueta = cfg["signos_vitales"][clave]["etiqueta"]
         validos = cfg["signos_vitales"][clave]["validos"]
         if crudo is None:
-            faltantes.append(clave)
+            if clave not in OPCIONALES:
+                faltantes.append(clave)
         elif not validos["min"] <= crudo <= validos["max"]:
             invalidos.append((clave, f"{etiqueta} {crudo} fuera de lo posible"))
         else:

@@ -65,10 +65,10 @@ export class SensorSimulado implements Sensor {
         const presionDia = Math.round(entre(60, 90));
         return { presionSys: Math.max(Math.round(entre(90, 140)), presionDia + 20), presionDia };
       }
-      case 'banda_pecho': {
-        const fcReposo = Math.round(entre(60, 100));
-        return { fcReposo, fcRecup: Math.round(entre(fcReposo + 15, 150)) };
-      }
+      case 'oximetro':
+        return { spo2: Math.round(entre(94, 100)), fcReposo: Math.round(entre(60, 100)) };
+      case 'oximetro_recuperacion':
+        return { fcRecup: Math.round(entre(105, 150)) };
       case 'balanza':
         return {
           peso: entre(60, 110).toFixed(1), imc: entre(18.5, 32).toFixed(1), grasa: entre(10, 25).toFixed(1),
@@ -88,8 +88,9 @@ export class SensorSimulado implements Sensor {
 export function crearSensoresSimulados(opciones: OpcionesSimulador = {}): Sensores {
   return {
     tensiometro: new SensorSimulado('tensiometro', opciones),
-    banda_pecho: new SensorSimulado('banda_pecho', opciones),
+    oximetro: new SensorSimulado('oximetro', opciones),
     balanza: new SensorSimulado('balanza', opciones),
     prueba_esfuerzo: new SensorSimulado('prueba_esfuerzo', opciones),
+    oximetro_recuperacion: new SensorSimulado('oximetro_recuperacion', opciones),
   };
 }

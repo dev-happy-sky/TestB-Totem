@@ -74,7 +74,7 @@ def construir_entrada(payload: EvaluacionPayload) -> Entrada:
     return Entrada(
         sintomas=tuple(salud.sintomas), condiciones=tuple(salud.condiciones), lesiones_previas=salud.lesionesPrevias,
         presion_sistolica=m.presionSys, presion_diastolica=m.presionDia, fc_reposo=m.fcReposo,
-        fc_recuperacion=m.fcRecup, imc=_a_float(m.imc),
+        fc_recuperacion=m.fcRecup, imc=_a_float(m.imc), spo2=m.spo2,
         calibracion_vencida=tuple(s for s, d in payload.dispositivos.items() if d.calibracion == "vencida"),
     )
 
@@ -240,7 +240,7 @@ def guardar_evaluacion(db: Session, payload: EvaluacionPayload, ip: Optional[str
         dispositivos=dispositivos or None,
         errores_medicion=[e.model_dump(mode="json") for e in payload.errores_medicion] or None,
         peso_kg=_a_float(m.peso), porcentaje_grasa=_a_float(m.grasa), imc=_a_float(m.imc),
-        vo2_max=_a_float(m.vo2Max), masa_muscular_kg=_a_float(m.masaMuscular),
+        vo2_max=_a_float(m.vo2Max), masa_muscular_kg=_a_float(m.masaMuscular), saturacion_oxigeno=m.spo2,
         frecuencia_cardiaca=m.fcReposo, fc_recuperacion=m.fcRecup,
         presion_sistolica=m.presionSys, presion_diastolica=m.presionDia,
     ))
@@ -394,6 +394,7 @@ def serializar_sesion(sesion: SesionTotem) -> dict:
             "grasa": fmt(med.porcentaje_grasa) if med else "",
             "vo2Max": fmt(med.vo2_max) if med else "",
             "masaMuscular": fmt(med.masa_muscular_kg) if med else "",
+            "spo2": int(med.saturacion_oxigeno) if med and med.saturacion_oxigeno is not None else None,
             "capturadoEn": _aware(med.capturado_en).isoformat() if med else None,
             "dispositivos": (med.dispositivos or {}) if med else {},
             "errores": (med.errores_medicion or []) if med else [],

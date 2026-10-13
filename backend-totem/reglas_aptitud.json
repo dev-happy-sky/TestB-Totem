@@ -11,7 +11,8 @@
   },
 
   "dispositivos": {
-    "tensiometro": "Tensiómetro", "banda_pecho": "Banda de pecho", "balanza": "Balanza", "prueba_esfuerzo": "Prueba de esfuerzo"
+    "tensiometro": "Tensiómetro", "oximetro": "Oxímetro", "oximetro_recuperacion": "Oxímetro (FC de recuperación)",
+    "balanza": "Balanza", "prueba_esfuerzo": "Prueba de esfuerzo", "banda_pecho": "Banda de pecho"
   },
 
   "signos_vitales": {
@@ -35,6 +36,14 @@
       "validos": {"min": 20, "max": 250},
       "precaucion_si": {"menor_que": 60, "mayor_o_igual_que": 101},
       "critico_si": {"menor_que": 40, "mayor_o_igual_que": 121},
+      "genera_alerta": true
+    },
+    "spo2": {
+      "etiqueta": "Saturación de oxígeno", "unidad": "%",
+      "nota": "Opcional: no descuenta confianza si falta. Precaución bajo 95 %, crítico bajo 90 % (valores generales, provisionales).",
+      "validos": {"min": 50, "max": 100},
+      "precaucion_si": {"menor_que": 95},
+      "critico_si": {"menor_que": 90},
       "genera_alerta": true
     },
     "imc": {

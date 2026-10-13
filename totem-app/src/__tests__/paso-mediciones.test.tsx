@@ -37,7 +37,7 @@ describe('PasoMediciones', () => {
     await montar();
 
     // Assert
-    for (const nombre of ['Tensiómetro', 'Banda de pecho', 'Balanza', 'Prueba de esfuerzo']) {
+    for (const nombre of ['Tensiómetro', 'Oxímetro', 'Balanza', 'Prueba de esfuerzo', 'Oxímetro (FC de recuperación)']) {
       expect(screen.getByLabelText(`Sensor ${nombre}`)).toBeTruthy();
       expect(screen.getByLabelText(`Medir ${nombre}`)).toBeTruthy();
     }
@@ -99,15 +99,15 @@ describe('PasoMediciones', () => {
 
   test('una lectura imposible no llega al padre y se informa como lectura inválida', async () => {
     // Arrange
-    const { alLeer, alFallar } = await montar(crearSensoresSimulados({ latenciaMs: 0, guion: { banda_pecho: ['valor_invalido'] } }));
+    const { alLeer, alFallar } = await montar(crearSensoresSimulados({ latenciaMs: 0, guion: { oximetro: ['valor_invalido'] } }));
 
     // Act
-    await fireEvent.press(screen.getByLabelText('Medir Banda de pecho'));
+    await fireEvent.press(screen.getByLabelText('Medir Oxímetro'));
 
     // Assert
     expect(await screen.findByText(/fuera de lo posible/)).toBeTruthy();
     expect(alLeer).not.toHaveBeenCalled();
-    expect(alFallar).toHaveBeenCalledWith(expect.objectContaining({ sensor: 'banda_pecho', codigo: 'lectura_invalida' }));
+    expect(alFallar).toHaveBeenCalledWith(expect.objectContaining({ sensor: 'oximetro', codigo: 'lectura_invalida' }));
   });
 
   test('un error que no es del sensor se registra como error genérico con su mensaje', async () => {
@@ -194,12 +194,12 @@ describe('PasoMediciones', () => {
     let azar = 0;
     const sensores = crearSensoresSimulados({ latenciaMs: 0, azar: () => azar });
     const { alLeer } = await montar(sensores);
-    await fireEvent.press(screen.getByLabelText('Medir Banda de pecho'));
+    await fireEvent.press(screen.getByLabelText('Medir Oxímetro'));
     await screen.findByText('✓ Medición terminada correctamente');
     azar = 0.9;
 
     // Act
-    await fireEvent.press(screen.getByLabelText('Volver a medir Banda de pecho'));
+    await fireEvent.press(screen.getByLabelText('Volver a medir Oxímetro'));
 
     // Assert
     await waitFor(() => expect(alLeer).toHaveBeenCalledTimes(2));

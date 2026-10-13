@@ -68,13 +68,13 @@ def test_sin_dispositivos_vencidos_la_confianza_no_cambia():
 
 def test_un_sensor_desconocido_se_muestra_con_su_clave():
     # Arrange
-    entrada = Entrada(**SANA, calibracion_vencida=("oximetro",))
+    entrada = Entrada(**SANA, calibracion_vencida=("termometro",))
 
     # Act
     resultado = evaluar(entrada, CFG)
 
     # Assert
-    assert "Calibración vencida: oximetro" in resultado.factores
+    assert "Calibración vencida: termometro" in resultado.factores
 
 
 def test_la_calibracion_vencida_puede_llevar_a_revision_y_aparece_en_el_motivo():
@@ -196,7 +196,7 @@ def test_una_calibracion_vigente_o_desconocida_no_descuenta(client, payload, tot
 
 
 @pytest.mark.parametrize("dispositivos", [
-    {"oximetro": {"id": "X"}},                                   # sensor desconocido
+    {"termometro": {"id": "X"}},                                 # sensor desconocido
     {"tensiometro": {"id": ""}},                                 # sin identificador
     {"tensiometro": {"id": "x" * 81}},                           # identificador demasiado largo
     {"tensiometro": {"id": "BP-01", "calibracion": "rota"}},     # estado inexistente

@@ -1,9 +1,10 @@
 // Contrato entre la app y los sensores. Hoy hay un simulador; el adaptador Bluetooth real (ESP32 y sensores
 // biomédicos) deberá implementar `Sensor` y se enchufa en `crearSensores()` sin tocar el flujo de la pantalla.
 
-export type TipoSensor = 'tensiometro' | 'banda_pecho' | 'balanza' | 'prueba_esfuerzo';
+// El oxímetro cubre dos mediciones: en reposo (SpO₂ y FC) y de recuperación (FC después del ejercicio).
+export type TipoSensor = 'tensiometro' | 'oximetro' | 'balanza' | 'prueba_esfuerzo' | 'oximetro_recuperacion';
 
-export const TIPOS_SENSOR: readonly TipoSensor[] = ['tensiometro', 'banda_pecho', 'balanza', 'prueba_esfuerzo'];
+export const TIPOS_SENSOR: readonly TipoSensor[] = ['tensiometro', 'oximetro', 'balanza', 'prueba_esfuerzo', 'oximetro_recuperacion'];
 
 export type Calibracion = 'vigente' | 'vencida' | 'desconocida';
 
@@ -12,7 +13,7 @@ export type CodigoError = 'desconectado' | 'timeout' | 'movimiento' | 'lectura_i
 
 /** Valores que entrega cada sensor. Los nombres coinciden con el campo `mediciones` de la evaluación. */
 export type ValoresMedidos = Partial<{
-  presionSys: number; presionDia: number; fcReposo: number; fcRecup: number;
+  presionSys: number; presionDia: number; fcReposo: number; fcRecup: number; spo2: number;
   peso: string; imc: string; grasa: string; masaMuscular: string; vo2Max: string;
 }>;
 

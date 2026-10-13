@@ -3,7 +3,7 @@ import { Alert, type AlertButton } from 'react-native';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
 
 import App from '../app/index';
-import { crearSensores, crearSensoresSimulados, type OpcionesSimulador } from '../sensores';
+import { crearSensores, crearSensoresSimulados, SensorOximetroPuente, type OpcionesSimulador } from '../sensores';
 
 jest.mock('@react-native-community/slider', () => 'Slider');
 // Los sensores reales (Bluetooth) no existen todavía: las pruebas usan el simulador, sin latencia y con valores fijos.
@@ -19,15 +19,17 @@ const MATRICULA = '20231234A';
 const CONSENTIMIENTO = /Autorizo el registro y uso de mis datos/;
 
 type Ruta = { status?: number; body?: unknown };
+type RutaOFuncion = Ruta | (() => Ruta);
 
 // Enruta fetch por "METODO /ruta". Una ruta no declarada falla la prueba en lugar de responder en silencio.
-const mockApi = (rutas: Record<string, Ruta>) => {
+const mockApi = (rutas: Record<string, RutaOFuncion>) => {
   global.fetch = jest.fn(async (url: unknown, init?: { method?: string }) => {
     const clave = `${init?.method ?? 'GET'} ${String(url).replace(/^https?:\/\/[^/]+/, '')}`;
-    const ruta = rutas[clave];
-    if (!ruta) throw new Error(`Ruta sin mock: ${clave}`);
+    const definida = rutas[clave];
+    if (!definida) throw new Error(`Ruta sin mock: ${clave}`);
+    const ruta = typeof definida === 'function' ? definida() : definida;
     const status = ruta.status ?? 200;
-    return { ok: status < 400, status, text: async () => JSON.stringify(ruta.body ?? {}) };
+    return { ok: status < 400, status, text: async () => JSON.stringify(ruta.body ?? {}), json: async () => ruta.body ?? {} };
   }) as unknown as typeof fetch;
 };
 
@@ -87,11 +89,12 @@ const llegarAlPaso2 = async () => {
   await fireEvent.press(screen.getByText('Continuar →'));
   await screen.findByText('PASO 2 - ESTACIÓN DE SENSORES');
 };
-const ETIQUETAS_SENSORES = ['Tensiómetro', 'Banda de pecho', 'Balanza', 'Prueba de esfuerzo'];
-const medir = async (sensor: string) => fireEvent.press(screen.getByLabelText(new RegExp(`^(Medir|Volver a medir|Reintentar) ${sensor}$`)));
+const ETIQUETAS_SENSORES = ['Tensiómetro', 'Oxímetro', 'Balanza', 'Prueba de esfuerzo', 'Oxímetro (FC de recuperación)'];
+const escapar = (texto: string) => texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const medir = async (sensor: string) => fireEvent.press(screen.getByLabelText(new RegExp(`^(Medir|Volver a medir|Reintentar) ${escapar(sensor)}$`)));
 const medirTodo = async () => {
   for (const sensor of ETIQUETAS_SENSORES) await medir(sensor);
-  await waitFor(() => expect(screen.getAllByText('✓ Medición terminada correctamente')).toHaveLength(4));
+  await waitFor(() => expect(screen.getAllByText('✓ Medición terminada correctamente')).toHaveLength(5));
 };
 const irAlPaso3 = async () => {
   await medirTodo();
@@ -314,7 +317,7 @@ describe('socio ya registrado (R.4, R.5, R.7)', () => {
 });
 
 describe('socio nuevo (R.3) y posibles duplicados (R.11)', () => {
-  const prepararNuevo = async (rutas: Record<string, Ruta> = {}) => {
+  const prepararNuevo = async (rutas: Record<string, RutaOFuncion> = {}) => {
     mockApi({ ...NUEVO, ...rutas });
     await render(<App />);
     await buscar();
@@ -684,7 +687,8 @@ describe('mediciones con sensores (R.52, R.55, R.62, R.63, R.64, R.65)', () => {
 
     // Assert
     expect(screen.getByText(/coloca el brazalete a la altura del corazón/)).toBeTruthy();
-    expect(screen.getByText(/Ajusta la banda sobre el pecho/)).toBeTruthy();
+    expect(screen.getByText(/Coloca el dedo índice limpio y seco/)).toBeTruthy();
+    expect(screen.getByText(/Apenas termines el ejercicio, vuelve a colocar el dedo/)).toBeTruthy();
     expect(screen.getByText(/Súbete descalzo y quieto/)).toBeTruthy();
     expect(screen.getByText(/Realiza el ejercicio indicado/)).toBeTruthy();
   });
@@ -726,7 +730,7 @@ describe('mediciones con sensores (R.52, R.55, R.62, R.63, R.64, R.65)', () => {
     // Assert
     const [titulo, mensaje] = alerta.mock.calls.find(([t]) => t === 'Faltan mediciones') as [string, string];
     expect(titulo).toBe('Faltan mediciones');
-    expect(mensaje).toContain('Banda de pecho, Balanza, Prueba de esfuerzo');
+    expect(mensaje).toContain('Oxímetro, Balanza, Prueba de esfuerzo, Oxímetro (FC de recuperación)');
     expect(mensaje).not.toContain('Tensiómetro');
     expect(screen.getByText('PASO 2 - ESTACIÓN DE SENSORES')).toBeTruthy();
   });
@@ -781,7 +785,7 @@ describe('mediciones con sensores (R.52, R.55, R.62, R.63, R.64, R.65)', () => {
 
   test('la evaluación incluye el dispositivo, su calibración y la hora de cada medición (R.58, R.59, R.60)', async () => {
     // Arrange
-    usarSensores({ calibracion: { balanza: 'vencida', banda_pecho: 'desconocida' } });
+    usarSensores({ calibracion: { balanza: 'vencida', oximetro: 'desconocida' } });
     conEnvio();
     await llegarAlPaso2();
 
@@ -789,10 +793,10 @@ describe('mediciones con sensores (R.52, R.55, R.62, R.63, R.64, R.65)', () => {
     const cuerpo = await enviarEvaluacion();
 
     // Assert
-    expect(Object.keys(cuerpo.dispositivos).sort()).toEqual(['balanza', 'banda_pecho', 'prueba_esfuerzo', 'tensiometro']);
+    expect(Object.keys(cuerpo.dispositivos).sort()).toEqual(['balanza', 'oximetro', 'oximetro_recuperacion', 'prueba_esfuerzo', 'tensiometro']);
     expect(cuerpo.dispositivos.balanza).toMatchObject({ id: 'SIM-BALANZA', calibracion: 'vencida' });
     expect(cuerpo.dispositivos.tensiometro.calibracion).toBe('vigente');
-    expect(cuerpo.dispositivos.banda_pecho.calibracion).toBe('desconocida');
+    expect(cuerpo.dispositivos.oximetro.calibracion).toBe('desconocida');
     for (const d of Object.values(cuerpo.dispositivos) as { capturado_en: string }[]) {
       expect(Number.isNaN(Date.parse(d.capturado_en))).toBe(false);
     }
@@ -856,19 +860,19 @@ describe('mediciones con sensores (R.52, R.55, R.62, R.63, R.64, R.65)', () => {
 
   test('un sensor desconectado se detecta al entrar y se puede reconectar (R.52)', async () => {
     // Arrange
-    const sensores = usarSensores({ desconectados: ['banda_pecho'] });
+    const sensores = usarSensores({ desconectados: ['oximetro'] });
     mockApi(registrado());
     await llegarAlPaso2();
 
     // Act
     const aviso = await screen.findByText(/Sensor desconectado\. Revisa que esté encendido/);
-    (sensores.banda_pecho as unknown as { conectar: () => void }).conectar();
+    (sensores.oximetro as unknown as { conectar: () => void }).conectar();
     await fireEvent.press(screen.getByText('Reintentar conexión'));
 
     // Assert
     expect(aviso).toBeTruthy();
     await waitFor(() => expect(screen.queryByText(/Sensor desconectado/)).toBeNull());
-    expect(screen.getByLabelText('Medir Banda de pecho')).toBeTruthy();
+    expect(screen.getByLabelText('Medir Oxímetro')).toBeTruthy();
   });
 
   test('si el sensor sigue desconectado al reintentar, el aviso se mantiene', async () => {
@@ -923,5 +927,127 @@ describe('mediciones con sensores (R.52, R.55, R.62, R.63, R.64, R.65)', () => {
     // Assert
     expect(screen.queryByText('✓ Medición terminada correctamente')).toBeNull();
     expect(screen.queryByText(/No se pudo medir/)).toBeNull();
+  });
+});
+
+describe('oxímetro real a través del puente Bluetooth', () => {
+  const MEDICION = (spo2: number, fc: number) => ({
+    status: 200,
+    body: { spo2, fc, indice_perfusion: 4.1, muestras: 5, capturado_en: new Date().toISOString(), dispositivo: { id: 'AA:BB:CC:DD:EE:FF', calibracion: 'desconocida' } },
+  });
+
+  const usarPuente = () => {
+    const config = { url: 'http://puente:8765' };
+    (crearSensores as jest.Mock).mockReturnValue({
+      ...crearSensoresSimulados({ latenciaMs: 0, azar: () => 0.5 }),
+      oximetro: new SensorOximetroPuente('oximetro', config),
+      oximetro_recuperacion: new SensorOximetroPuente('oximetro_recuperacion', config),
+    });
+  };
+
+  const secuencia = (...respuestas: Ruta[]) => { let i = 0; return () => respuestas[Math.min(i++, respuestas.length - 1)]; };
+
+  test('la medición en reposo muestra SpO₂ y FC y viaja con la evaluación, junto con el dispositivo', async () => {
+    // Arrange
+    usarPuente();
+    mockApi({
+      ...registrado(), 'GET /estado': { body: { conectado: true } },
+      'POST /medir': secuencia(MEDICION(96, 74), MEDICION(98, 121)),
+      'POST /api/evaluaciones': { body: { status: 'success' } },
+    });
+    await llegarAlPaso2();
+
+    // Act
+    await medir('Oxímetro');
+    await medir('Oxímetro (FC de recuperación)');
+    await waitFor(() => expect(screen.getAllByText('✓ Medición terminada correctamente')).toHaveLength(2));
+    for (const sensor of ['Tensiómetro', 'Balanza', 'Prueba de esfuerzo']) await medir(sensor);
+    await waitFor(() => expect(screen.getAllByText('✓ Medición terminada correctamente')).toHaveLength(5));
+    await fireEvent.press(screen.getByText('Continuar →'));
+    await fireEvent.press(screen.getByLabelText('3 días a la semana'));
+    await fireEvent.press(screen.getByText('Continuar →'));
+    await fireEvent.press(screen.getByText('Continuar →'));
+    await fireEvent.press(screen.getByText('Registrar mi ingreso'));
+
+    // Assert
+    await waitFor(() => expect(llamadas('POST /api/evaluaciones')).toHaveLength(1));
+    const cuerpo = JSON.parse(llamadas('POST /api/evaluaciones')[0][1].body);
+    expect(cuerpo.mediciones).toMatchObject({ spo2: 96, fcReposo: 74, fcRecup: 121 });
+    expect(cuerpo.dispositivos.oximetro).toMatchObject({ id: 'AA:BB:CC:DD:EE:FF', calibracion: 'desconocida' });
+    expect(cuerpo.dispositivos.oximetro_recuperacion.id).toBe('AA:BB:CC:DD:EE:FF');
+  });
+
+  test('si no se detecta el dedo muestra el motivo, registra el error y permite repetir', async () => {
+    // Arrange
+    usarPuente();
+    mockApi({
+      ...registrado(), 'GET /estado': { body: { conectado: true } },
+      'POST /medir': secuencia(
+        { status: 422, body: { codigo: 'lectura_invalida', mensaje: 'No se detecta el dedo. Colócalo bien en el oxímetro.' } },
+        MEDICION(97, 70)),
+      'POST /api/evaluaciones': { body: { status: 'success' } },
+    });
+    await llegarAlPaso2();
+
+    // Act
+    await medir('Oxímetro');
+
+    // Assert
+    expect(await screen.findByText(/No se detecta el dedo\. Colócalo bien en el oxímetro/)).toBeTruthy();
+    await medir('Oxímetro');
+    await screen.findByText('✓ Medición terminada correctamente');
+    const cuerpo = await (async () => {
+      await medirTodo();
+      await fireEvent.press(screen.getByText('Continuar →'));
+      await fireEvent.press(screen.getByLabelText('3 días a la semana'));
+      await fireEvent.press(screen.getByText('Continuar →'));
+      await fireEvent.press(screen.getByText('Continuar →'));
+      await fireEvent.press(screen.getByText('Registrar mi ingreso'));
+      await waitFor(() => expect(llamadas('POST /api/evaluaciones')).toHaveLength(1));
+      return JSON.parse(llamadas('POST /api/evaluaciones')[0][1].body);
+    })();
+    expect(cuerpo.errores_medicion[0]).toMatchObject({ sensor: 'oximetro', codigo: 'lectura_invalida' });
+  });
+
+  test('si el puente no está disponible, las dos mediciones del oxímetro figuran como desconectadas', async () => {
+    // Arrange
+    usarPuente();
+    mockApi({ ...registrado(), 'GET /estado': { body: { conectado: false } } });
+
+    // Act
+    await llegarAlPaso2();
+
+    // Assert
+    await waitFor(() => expect(screen.getAllByText(/Sensor desconectado/)).toHaveLength(2));
+    expect(screen.getByLabelText('Medir Tensiómetro')).toBeTruthy();   // los demás sensores siguen disponibles
+  });
+
+  test('al conectar el oxímetro se puede reintentar la conexión', async () => {
+    // Arrange
+    usarPuente();
+    mockApi({ ...registrado(), 'GET /estado': secuencia({ body: { conectado: false } }, { body: { conectado: false } }, { body: { conectado: true } }) });
+    await llegarAlPaso2();
+    await waitFor(() => expect(screen.getAllByText('Reintentar conexión')).toHaveLength(2));
+
+    // Act
+    await fireEvent.press(screen.getAllByText('Reintentar conexión')[0]);
+
+    // Assert
+    await waitFor(() => expect(screen.getByLabelText('Medir Oxímetro')).toBeTruthy());
+    expect(screen.getAllByText(/Sensor desconectado/)).toHaveLength(1);   // la medición de recuperación sigue desconectada
+  });
+
+  test('si el puente se cae durante la medición se informa como sensor desconectado', async () => {
+    // Arrange
+    usarPuente();
+    mockApi({ ...registrado(), 'GET /estado': { body: { conectado: true } }, 'POST /medir': { status: 503, body: { codigo: 'desconectado', mensaje: 'El oxímetro no está conectado. Enciéndelo y acércalo al tótem.' } } });
+    await llegarAlPaso2();
+
+    // Act
+    await medir('Oxímetro');
+
+    // Assert
+    expect(await screen.findByText(/Sensor desconectado/)).toBeTruthy();
+    expect(screen.getByText('Reintentar conexión')).toBeTruthy();
   });
 });

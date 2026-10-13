@@ -1,11 +1,14 @@
 // Dispositivos, calibración y errores de las mediciones del tótem (sin React, fácil de probar).
 import { horaLocal } from './formato';
 
+// En el orden en que se miden en el tótem. `banda_pecho` solo existe en evaluaciones antiguas (hoy la FC la mide el oxímetro).
 export const ETIQUETA_SENSOR = {
   tensiometro: 'Tensiómetro',
-  banda_pecho: 'Banda de pecho',
+  oximetro: 'Oxímetro',
   balanza: 'Balanza',
   prueba_esfuerzo: 'Prueba de esfuerzo',
+  oximetro_recuperacion: 'Oxímetro (FC de recuperación)',
+  banda_pecho: 'Banda de pecho',
 };
 
 export const ETIQUETA_CALIBRACION = {

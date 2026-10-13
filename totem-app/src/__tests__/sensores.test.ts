@@ -83,12 +83,14 @@ describe('SensorSimulado', () => {
     let semilla = 1;
     const azar = () => { semilla = (semilla * 16807) % 2147483647; return semilla / 2147483647; };
     const tensiometro = new SensorSimulado('tensiometro', { azar });
-    const banda = new SensorSimulado('banda_pecho', { azar });
+    const oximetro = new SensorSimulado('oximetro', { azar });
+    const recuperacion = new SensorSimulado('oximetro_recuperacion', { azar });
 
     // Act / Assert
     for (let i = 0; i < 200; i++) {
       const { presionSys, presionDia } = (await tensiometro.medir()).valores;
-      const { fcReposo, fcRecup } = (await banda.medir()).valores;
+      const { fcReposo } = (await oximetro.medir()).valores;
+      const { fcRecup } = (await recuperacion.medir()).valores;
       expect(presionSys!).toBeGreaterThan(presionDia!);
       expect(fcRecup!).toBeGreaterThan(fcReposo!);
     }
@@ -123,7 +125,7 @@ describe('SensorSimulado', () => {
 
     // Act / Assert
     for (const codigo of codigos) {
-      const sensor = new SensorSimulado('banda_pecho', { guion: { banda_pecho: [codigo] } });
+      const sensor = new SensorSimulado('oximetro', { guion: { oximetro: [codigo] } });
       const error = await sensor.medir().catch((e) => e);
       expect(error).toBeInstanceOf(ErrorSensor);
       expect(error.codigo).toBe(codigo);
@@ -180,7 +182,7 @@ describe('crearSensores', () => {
     const sensores = crearSensores();
 
     // Assert
-    expect(Object.keys(sensores)).toHaveLength(4);
+    expect(Object.keys(sensores)).toHaveLength(5);
   });
 
   test('un modo que aún no existe se informa con claridad', () => {

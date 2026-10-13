@@ -826,3 +826,79 @@ describe('dispositivos, calibración y errores de medición (R.58-R.60, R.65)', 
     expect(screen.queryByText(/Errores durante la medición/)).not.toBeInTheDocument();
   });
 });
+
+describe('saturación de oxígeno del oxímetro', () => {
+  const conSpo2 = (spo2) => evaluacion(1, { mediciones: { ...evaluacion(1).mediciones, spo2 } });
+
+  test('muestra la SpO₂ medida', async () => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [conSpo2(97)] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.getByText('SpO₂').nextSibling).toHaveTextContent('97');
+    expect(screen.getByText('SpO₂').nextSibling).toHaveClass('text-slate-800');
+  });
+
+  test.each([[94], [90], [85]])('una SpO₂ de %p se destaca en rojo', async (spo2) => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [conSpo2(spo2)] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.getByText('SpO₂').nextSibling).toHaveClass('text-red-600');
+  });
+
+  test('una SpO₂ de 95 % es normal', async () => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [conSpo2(95)] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.getByText('SpO₂').nextSibling).toHaveClass('text-slate-800');
+  });
+
+  test.each([[null], [undefined]])('sin SpO₂ (%p) muestra guiones', async (spo2) => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [conSpo2(spo2)] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.getByText('SpO₂').nextSibling).toHaveTextContent('--');
+  });
+
+  test('lista el oxímetro y su medición de recuperación entre los dispositivos', async () => {
+    // Arrange
+    const e = evaluacion(1, {
+      mediciones: {
+        ...evaluacion(1).mediciones,
+        dispositivos: {
+          oximetro_recuperacion: { id: 'OXI-1', calibracion: 'desconocida' },
+          oximetro: { id: 'OXI-1', calibracion: 'desconocida' },
+        },
+      },
+    });
+    mockApi({ 'GET /api/evaluaciones': { body: [e] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    const items = within(screen.getByRole('list', { name: 'Dispositivos de medición' })).getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('Oxímetro · OXI-1 · calibración sin informar');
+    expect(items[1]).toHaveTextContent('Oxímetro (FC de recuperación) · OXI-1');
+  });
+});
