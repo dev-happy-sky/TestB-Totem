@@ -16,7 +16,7 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout })
   const [errorAlerta, setErrorAlerta] = useState('');
   const [errorMediciones, setErrorMediciones] = useState('');
 
-  // URL base de tu backend en Render
+  // URL base del backend (NEXT_PUBLIC_BACKEND_URL; por defecto el publicado en Render)
   const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://totem-backend-g6yh.onrender.com';
   const WS_URL = BACKEND_URL.replace(/^http/, 'ws') + '/ws/dashboard';
   const authHeaders = { Authorization: `Bearer ${sesion.token}` };
@@ -31,17 +31,17 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout })
       .then(data => {
         setColaEstudiantes(data);
         if (data.length > 0) setEstudianteSeleccionado(data[0]);
-        console.log('✓ Historial cargado desde Render');
       })
       .catch(err => console.error("✗ Error cargando base de datos:", err));
 
     // 2. CONEXIÓN WEBSOCKET PARA TIEMPO REAL
+    let activo = true;   // en desarrollo React monta dos veces: el primer socket se cierra antes de conectar y no es un error
     const socket = new WebSocket(WS_URL);
 
     // El token se envía en el primer mensaje; el servidor cierra la conexión si no es válido.
     socket.onopen = () => socket.send(JSON.stringify({ token: sesion.token }));
-    socket.onclose = (ev) => { if (ev.code === 4401) onSesionInvalida(); };
-    socket.onerror = (error) => console.error('✗ Error en WebSocket:', error);
+    socket.onclose = (ev) => { if (activo && ev.code === 4401) onSesionInvalida(); };
+    socket.onerror = (error) => { if (activo) console.error('✗ Error en WebSocket:', error); };
 
     socket.onmessage = (event) => {
       try {
@@ -59,7 +59,7 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout })
       }
     };
 
-    return () => socket.close();
+    return () => { activo = false; socket.close(); };
   }, []);
 
   // Evaluaciones anteriores del socio seleccionado, para ver su evolución.
