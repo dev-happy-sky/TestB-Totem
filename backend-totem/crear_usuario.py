@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from conexion import normalizar_url
 from credenciales import hash_password
 from models import Base, PersonalGimnasio
 
@@ -65,8 +66,7 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     url = os.getenv("DATABASE_URL", URL_LOCAL_POR_DEFECTO)
-    if url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql://", 1)
+    url = normalizar_url(url)
     engine = create_engine(url)
     Base.metadata.create_all(bind=engine)
     with sessionmaker(bind=engine)() as db:
