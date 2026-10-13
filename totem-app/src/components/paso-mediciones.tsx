@@ -3,7 +3,7 @@ import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-nativ
 
 import {
   ErrorSensor, ETIQUETA_SENSOR, INSTRUCCIONES, TIPOS_SENSOR, validarLectura,
-  type CodigoError, type ErrorMedicion, type Lectura, type Sensores, type TipoSensor, type ValoresMedidos,
+  type CodigoError, type ErrorMedicion, type Lectura, type LecturaEnVivo, type Sensores, type TipoSensor, type ValoresMedidos,
 } from '../sensores';
 
 type Estado =
@@ -17,6 +17,8 @@ type Props = {
   lecturas: Partial<Record<TipoSensor, Lectura>>;
   onLectura: (lectura: Lectura) => void;
   onError: (error: ErrorMedicion) => void;
+  /** Cada cuánto se consulta la lectura en vivo de los sensores que la ofrecen. */
+  intervaloEnVivoMs?: number;
 };
 
 const COLOR_NORMAL = '#0f172a';
@@ -63,8 +65,15 @@ export const ID_DISPOSITIVO_MANUAL = 'manual';
 
 type Manual = { valores: Record<string, string>; error: string };
 
-export default function PasoMediciones({ sensores, lecturas, onLectura, onError }: Props) {
+const MENSAJE_EN_VIVO: Record<NonNullable<LecturaEnVivo['motivo']>, string> = {
+  desconectado: 'Oxímetro no conectado',
+  sin_senal: 'Sin señal del oxímetro',
+  sin_dedo: 'Coloca el dedo en el oxímetro',
+};
+
+export default function PasoMediciones({ sensores, lecturas, onLectura, onError, intervaloEnVivoMs = 1000 }: Props) {
   const [estados, setEstados] = useState<Partial<Record<TipoSensor, Estado>>>({});
+  const [enVivo, setEnVivo] = useState<Partial<Record<TipoSensor, LecturaEnVivo>>>({});
   const [manuales, setManuales] = useState<Partial<Record<TipoSensor, Manual>>>({});
 
   const poner = (tipo: TipoSensor, estado: Estado) => setEstados((previo) => ({ ...previo, [tipo]: estado }));
@@ -83,6 +92,25 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError 
     });
     return () => { activo = false; };
   }, [sensores]);
+
+  // Lectura en vivo: mientras la pantalla está abierta se consulta lo último que envía el oxímetro, sin que el usuario
+  // tenga que pulsar nada. No se registra: lo que cuenta es la medición que se confirma con "Medir".
+  useEffect(() => {
+    const conVivo = TIPOS_SENSOR.filter((tipo) => sensores[tipo].enVivo);
+    if (conVivo.length === 0) return undefined;
+    let activo = true;
+    let ocupado = false;
+    const consultar = async () => {
+      if (ocupado) return;   // no se acumulan peticiones si el puente tarda
+      ocupado = true;
+      const recibidas = await Promise.all(conVivo.map((tipo) => sensores[tipo].enVivo!().catch((): LecturaEnVivo => ({ valida: false, motivo: 'desconectado' }))));
+      ocupado = false;
+      if (activo) setEnVivo(Object.fromEntries(conVivo.map((tipo, i) => [tipo, recibidas[i]])));
+    };
+    consultar();
+    const temporizador = setInterval(consultar, intervaloEnVivoMs);
+    return () => { activo = false; clearInterval(temporizador); };
+  }, [sensores, intervaloEnVivoMs]);
 
   const registrarError = (tipo: TipoSensor, codigo: CodigoError, mensaje: string) => {
     onError({ sensor: tipo, codigo, mensaje: mensaje.slice(0, 200), ocurrido_en: new Date().toISOString() });
@@ -162,6 +190,19 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError 
                 );
               })}
             </View>
+
+            {sensores[tipo].enVivo && enVivo[tipo] && (
+              <View style={estilos.enVivo} accessibilityLabel={`En vivo ${etiqueta}`}>
+                <Text style={estilos.enVivoTitulo}>EN VIVO</Text>
+                {enVivo[tipo]!.valida ? (
+                  <Text style={estilos.enVivoValor}>
+                    {tipo === 'oximetro' ? `SpO₂ ${enVivo[tipo]!.spo2} %  ·  ` : ''}FC {enVivo[tipo]!.fc} lpm
+                  </Text>
+                ) : (
+                  <Text style={estilos.enVivoSinDato}>{MENSAJE_EN_VIVO[enVivo[tipo]!.motivo ?? 'sin_senal']}</Text>
+                )}
+              </View>
+            )}
 
             {estado.tipo === 'desconectado' && (
               <Text style={estilos.error} accessibilityRole="alert">
@@ -243,6 +284,10 @@ const estilos = StyleSheet.create({
   botonTexto: { color: '#fff', fontWeight: 'bold' },
   botonSecundario: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', marginLeft: 8 },
   botonSecundarioTexto: { color: '#475569', fontWeight: 'bold' },
+  enVivo: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, padding: 8, borderRadius: 8, backgroundColor: '#f0fdf4', borderWidth: 1, borderColor: '#bbf7d0' },
+  enVivoTitulo: { fontSize: 10, fontWeight: 'bold', color: '#16a34a', letterSpacing: 1, marginRight: 10 },
+  enVivoValor: { fontSize: 16, fontWeight: 'bold', color: '#0f172a' },
+  enVivoSinDato: { fontSize: 13, color: '#64748b' },
   enlace: { color: '#475569', fontSize: 13, textDecorationLine: 'underline', marginTop: 4 },
   manual: { marginTop: 4, padding: 10, borderRadius: 8, backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0' },
   entrada: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, fontSize: 18, minWidth: 80, color: '#0f172a', backgroundColor: '#fff' },

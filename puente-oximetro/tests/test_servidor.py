@@ -331,3 +331,108 @@ def test_fuera_de_localhost_con_token_si_arranca(monkeypatch):
 
     # Assert
     assert codigo == 0 and iniciado == [{"host": "0.0.0.0", "port": 9000}]
+
+
+# ------------------------------------------------------------------------------------------- /lectura
+
+async def _lectura(lector, **opciones):
+    async with cliente(crear_app(lector, **opciones)) as c:
+        return await c.get("/lectura")
+
+
+async def test_lectura_devuelve_el_ultimo_valor_valido_para_mostrarlo_en_vivo():
+    # Arrange
+    lector = LectorFalso()
+    lector.captura.agregar(buena(97, 72))
+
+    # Act
+    r = await _lectura(lector)
+
+    # Assert
+    assert r.status_code == 200
+    assert r.json() == {"conectado": True, "valida": True, "spo2": 97, "fc": 72, "indice_perfusion": 4.1, "motivo": None}
+
+
+async def test_lectura_devuelve_siempre_lo_mas_reciente():
+    # Arrange
+    lector = LectorFalso()
+    lector.captura.agregar(buena(97, 72))
+    lector.captura.agregar(buena(95, 80))
+
+    # Act
+    r = await _lectura(lector)
+
+    # Assert
+    assert (r.json()["spo2"], r.json()["fc"]) == (95, 80)
+
+
+async def test_lectura_sin_dedo_no_entrega_valores():
+    # Arrange
+    lector = LectorFalso()
+    lector.captura.agregar(Muestra(0, 0, 0.0, False, "sin dedo"))
+
+    # Act
+    r = await _lectura(lector)
+
+    # Assert
+    assert r.json() == {"conectado": True, "valida": False, "spo2": None, "fc": None, "indice_perfusion": None, "motivo": "sin_dedo"}
+
+
+async def test_lectura_vieja_se_considera_sin_senal():
+    # Arrange
+    lector = LectorFalso()
+    lector.captura.agregar(buena())
+    lector._reloj.t += 3.5
+
+    # Act
+    r = await _lectura(lector)
+
+    # Assert
+    assert r.json()["valida"] is False and r.json()["motivo"] == "sin_senal" and r.json()["spo2"] is None
+
+
+async def test_lectura_sin_ningun_paquete_es_sin_senal():
+    # Arrange / Act
+    r = await _lectura(LectorFalso())
+
+    # Assert
+    assert r.json()["motivo"] == "sin_senal" and r.json()["conectado"] is True
+
+
+async def test_lectura_desconectado_no_muestra_el_ultimo_valor_viejo():
+    # Arrange
+    lector = LectorFalso(conectado=False)
+    lector.captura.agregar(buena())
+
+    # Act
+    r = await _lectura(lector)
+
+    # Assert
+    assert r.json() == {"conectado": False, "valida": False, "spo2": None, "fc": None, "indice_perfusion": None, "motivo": "desconectado"}
+
+
+async def test_lectura_exige_la_clave_si_el_puente_tiene_token():
+    # Arrange
+    lector = LectorFalso()
+    lector.captura.agregar(buena())
+
+    # Act
+    sin_clave = await _lectura(lector, token="secreta")
+    async with cliente(crear_app(lector, token="secreta")) as c:
+        con_clave = await c.get("/lectura", headers={"X-Puente-Key": "secreta"})
+
+    # Assert
+    assert sin_clave.status_code == 401 and con_clave.status_code == 200
+
+
+async def test_lectura_no_guarda_nada_en_disco(tmp_path, monkeypatch):
+    # Arrange
+    monkeypatch.chdir(tmp_path)
+    lector = LectorFalso()
+    lector.captura.agregar(buena())
+
+    # Act
+    await _lectura(lector)
+
+    # Assert
+    assert list(tmp_path.iterdir()) == []

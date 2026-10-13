@@ -15,6 +15,9 @@ from fastapi.responses import JSONResponse
 
 from puente.captura import ErrorMedicion, TIMEOUT_POR_DEFECTO_S, esperar_medicion
 
+# Una lectura en vivo más vieja que esto se considera "sin señal" (el oxímetro envía cerca de una muestra por segundo).
+VIGENCIA_EN_VIVO_S = 3.0
+
 ESTADO_HTTP = {"desconectado": 503, "timeout": 504, "lectura_invalida": 422, "movimiento": 422, "error": 500}
 
 
@@ -46,6 +49,21 @@ def crear_app(lector, token: Optional[str] = None, origenes: Optional[list] = No
             "conectado": lector.conectado, "dispositivo": lector.direccion,
             "ultimo_paquete_hace_s": None if ultimo is None else round(reloj() - ultimo, 1),
         }
+
+    @app.get("/lectura", dependencies=[Depends(verificar)])
+    def lectura():
+        """Último valor que envió el oxímetro, para mostrarlo en vivo. No es una medición: no se estabiliza ni se guarda."""
+        vacia = {"valida": False, "spo2": None, "fc": None, "indice_perfusion": None}
+        if not lector.conectado:
+            return {**vacia, "conectado": False, "motivo": "desconectado"}
+        ultima = lector.captura.ultima()
+        if ultima is None or reloj() - ultima[0] > VIGENCIA_EN_VIVO_S:
+            return {**vacia, "conectado": True, "motivo": "sin_senal"}
+        _, muestra = ultima
+        if not muestra.valida:
+            return {**vacia, "conectado": True, "motivo": "sin_dedo"}
+        return {"conectado": True, "valida": True, "spo2": muestra.spo2, "fc": muestra.fc,
+                "indice_perfusion": muestra.indice_perfusion, "motivo": None}
 
     @app.post("/medir", dependencies=[Depends(verificar)])
     async def medir():

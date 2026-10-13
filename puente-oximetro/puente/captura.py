@@ -47,6 +47,10 @@ class Captura:
         self.ultimo_paquete = ahora
         self._muestras.append((ahora, muestra))
 
+    def ultima(self) -> Optional[tuple]:
+        """(instante, muestra) de lo último que llegó, sea válido o no; None si aún no llegó nada."""
+        return self._muestras[-1] if self._muestras else None
+
     def desde(self, instante: float) -> list:
         return [(t, m) for t, m in self._muestras if t >= instante]
 

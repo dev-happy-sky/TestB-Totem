@@ -56,10 +56,15 @@ class LectorOximetro:
 
     async def _mantener_conexion(self):
         while True:
-            if not self.conectado:
-                self.captura.limpiar()
-                self._cliente = None
-                await self._conectar_una_vez()
+            try:
+                if not self.conectado:
+                    self.captura.limpiar()
+                    self._cliente = None
+                    await self._conectar_una_vez()
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:   # nada debe matar el bucle: el puente tiene que seguir intentando siempre
+                logger.warning("Error inesperado al conectar con el oxímetro: %s", error)
             await self._dormir(REINTENTO_CONEXION_S)
 
     async def iniciar(self):
