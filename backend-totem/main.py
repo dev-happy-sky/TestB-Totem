@@ -30,7 +30,7 @@ from persistencia import (
 )
 from identidad import normalizar_matricula, matricula_valida, MENSAJE_MATRICULA
 from schemas import (
-    EvaluacionPayload, IdentificarPayload, LoginPayload, SocioActualizacion, SocioRegistro, ValidacionPayload,
+    EvaluacionPayload, IdentificarPayload, LoginPayload, PerfilActualizacion, SocioActualizacion, SocioRegistro, ValidacionPayload,
     ValidarMedicionesPayload,
 )
 
@@ -347,6 +347,42 @@ def login(payload: LoginPayload, request: Request, db: Session = Depends(get_db)
     _intentos.pop(clave, None)
     registrar_acceso(db, "login", usuario=u.email, rol=u.rol, ip=ip, personal_id=u.id)
     return {"token": crear_token(u.email, u.rol, str(u.id)), "rol": u.rol, "usuario": u.email, "expira_horas": JWT_HORAS}
+
+
+def _perfil_de(u: PersonalGimnasio) -> dict:
+    return {"nombre": u.nombre, "apellido": u.apellido, "email": u.email, "rol": u.rol, "sucursal": u.sucursal}
+
+
+def _personal_de(db: Session, user: dict) -> PersonalGimnasio:
+    """El registro del usuario con sesión. Sin seguridad (acceso libre) no hay usuario y por tanto tampoco perfil."""
+    uid = _uuid_o_none(user.get("uid"))
+    u = db.get(PersonalGimnasio, uid) if uid else None
+    if not u or not u.activo:
+        raise HTTPException(status_code=404, detail="No hay un perfil asociado a esta sesión")
+    return u
+
+
+@app.get("/api/perfil")
+def obtener_perfil(user: dict = Depends(requiere_rol(*ROLES_DASHBOARD)), db: Session = Depends(get_db)):
+    return _perfil_de(_personal_de(db, user))
+
+
+@app.put("/api/perfil")
+def actualizar_perfil(payload: PerfilActualizacion, request: Request, user: dict = Depends(requiere_rol(*ROLES_DASHBOARD)),
+                      db: Session = Depends(get_db)):
+    u = _personal_de(db, user)
+    ip = request.client.host if request.client else None
+    cambia_clave = bool(payload.password_nueva)
+    if cambia_clave and not verify_password(payload.password_actual, u.password_hash):
+        registrar_acceso(db, "cambio_clave_fallido", usuario=u.email, rol=u.rol, ip=ip, personal_id=u.id)
+        raise HTTPException(status_code=400, detail="La contraseña actual no es correcta")
+    u.nombre, u.apellido, u.sucursal = payload.nombre, payload.apellido, payload.sucursal
+    if cambia_clave:
+        u.password_hash = hash_password(payload.password_nueva)
+    db.commit()
+    registrar_acceso(db, "cambio_clave" if cambia_clave else "perfil_actualizado", usuario=u.email, rol=u.rol,
+                     recurso="/api/perfil", ip=ip, personal_id=u.id)
+    return _perfil_de(u)
 
 
 @app.websocket("/ws/dashboard")
