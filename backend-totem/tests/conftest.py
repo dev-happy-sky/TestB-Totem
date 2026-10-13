@@ -6,7 +6,7 @@ import tempfile
 _db = os.path.join(tempfile.mkdtemp(), "test.db")
 os.environ.update(
     DATABASE_URL=os.getenv("TEST_DATABASE_URL", f"sqlite:///{_db}"), JWT_SECRET="s" * 40, TOTEM_API_KEY="clave-totem",
-    ADMIN_PASSWORD="admin-pass", ENCARGADO_PASSWORD="enc-pass", ALLOWED_ORIGINS="http://dash.test",
+    ADMIN_PASSWORD="admin-pass", ENCARGADO_PASSWORD="enc-pass", ALLOWED_ORIGINS="http://dash.test", SEGURIDAD_ACTIVA="true",
 )
 
 import pytest

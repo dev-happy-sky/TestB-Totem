@@ -160,3 +160,75 @@ describe('cierre del WebSocket al desmontar', () => {
     expect(console.error).toHaveBeenCalledWith('✗ Error en WebSocket:', { type: 'error' });
   });
 });
+
+describe('modo sin seguridad (backend con SEGURIDAD_ACTIVA=false)', () => {
+  const abierta = { token: null, rol: 'admin', usuario: 'Sin seguridad' };
+
+  test('pide los datos sin cabecera de autorización', async () => {
+    // Arrange
+    mockHistorial([evaluacion(1)]);
+
+    // Act
+    render(<DashboardAptitud {...props} sesion={abierta} sinSeguridad />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    const [, opciones] = global.fetch.mock.calls[0];
+    expect(opciones.headers).not.toHaveProperty('Authorization');
+  });
+
+  test('avisa que la seguridad está desactivada y no ofrece cerrar sesión', async () => {
+    // Arrange
+    mockHistorial([]);
+
+    // Act
+    render(<DashboardAptitud {...props} sesion={abierta} sinSeguridad />);
+
+    // Assert
+    expect(screen.getByRole('alert')).toHaveTextContent('Seguridad desactivada');
+    expect(screen.queryByRole('button', { name: 'Cerrar sesión' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Sin seguridad · admin/)).not.toBeInTheDocument();
+  });
+
+  test('el WebSocket no envía ningún token', async () => {
+    // Arrange
+    mockHistorial([]);
+    render(<DashboardAptitud {...props} sesion={abierta} sinSeguridad />);
+    const ws = FakeWebSocket.instancias[0];
+
+    // Act
+    act(() => ws.onopen());
+
+    // Assert
+    expect(ws.enviados).toEqual([]);
+  });
+
+  test('con seguridad (modo normal) sigue mostrando el usuario, el cierre de sesión y enviando el token', async () => {
+    // Arrange
+    mockHistorial([]);
+    render(<DashboardAptitud {...props} />);
+    const ws = FakeWebSocket.instancias[0];
+
+    // Act
+    act(() => ws.onopen());
+
+    // Assert
+    expect(screen.getByText('ana · encargado')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cerrar sesión' })).toBeInTheDocument();
+    expect(screen.queryByText(/Seguridad desactivada/)).not.toBeInTheDocument();
+    expect(JSON.parse(ws.enviados[0])).toEqual({ token: 'tok123' });
+  });
+
+  test('una evaluación nueva llega por WebSocket también sin seguridad', async () => {
+    // Arrange
+    mockHistorial([]);
+    render(<DashboardAptitud {...props} sesion={abierta} sinSeguridad />);
+    await screen.findByText(/Esperando evaluaciones/);
+
+    // Act
+    act(() => FakeWebSocket.instancias[0].onmessage({ data: JSON.stringify(evaluacion(7)) }));
+
+    // Assert
+    expect(await screen.findAllByText('Socio 7')).not.toHaveLength(0);
+  });
+});

@@ -65,27 +65,66 @@ def get_db():
         db.close()
 
 
-# --- 3. CONFIGURACIÓN CORS ---
-# Solo los orígenes del dashboard (R.184). Se define con ALLOWED_ORIGINS separados por coma.
+# --- 3. INTERRUPTOR DE SEGURIDAD ---
+# SEGURIDAD_ACTIVA=true activa: login y roles del dashboard (JWT), clave del tótem, CORS restringido y límites de
+# intentos. Apagado (valor por defecto) el backend queda ABIERTO: cualquiera con la URL puede leer y modificar
+# evaluaciones (datos de salud). Es una medida temporal de desarrollo.
+VALORES_VERDADEROS = ("1", "true", "t", "si", "sí", "yes", "y", "on")
+
+
+def _a_booleano(valor, defecto: bool = False) -> bool:
+    if valor is None or not str(valor).strip():
+        return defecto
+    return str(valor).strip().lower() in VALORES_VERDADEROS
+
+
+SEGURIDAD_ACTIVA = _a_booleano(os.getenv("SEGURIDAD_ACTIVA"), False)
+
+# Usuario con el que se registran las acciones cuando la seguridad está apagada (no hay login).
+USUARIO_ABIERTO = {"sub": "acceso-libre", "rol": "admin", "uid": None}
+
+
+def avisos_de_arranque(seguridad: bool, jwt_definido: bool, clave_totem_definida: bool) -> list:
+    if not seguridad:
+        return ["SEGURIDAD DESACTIVADA (SEGURIDAD_ACTIVA no es true): sin login, sin clave del tótem y con CORS abierto. "
+                "No uses esto con datos reales de socios."]
+    avisos = []
+    if not jwt_definido:
+        avisos.append("JWT_SECRET no definido: se usa un secreto temporal (las sesiones se pierden al reiniciar).")
+    if not clave_totem_definida:
+        avisos.append("TOTEM_API_KEY no definido: el endpoint del tótem queda sin clave.")
+    return avisos
+
+
+# --- 3a. CONFIGURACIÓN CORS ---
+# Con seguridad: solo los orígenes del dashboard (R.184), definidos en ALLOWED_ORIGINS separados por coma.
+# Sin seguridad: cualquier origen.
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Totem-Key"],
-)
+
+
+def configurar_cors(aplicacion: FastAPI, seguridad: bool, origenes: list):
+    if seguridad:
+        aplicacion.add_middleware(
+            CORSMiddleware, allow_origins=origenes, allow_credentials=False,
+            allow_methods=["GET", "POST", "PUT", "OPTIONS"], allow_headers=["Authorization", "Content-Type", "X-Totem-Key"],
+        )
+    else:
+        aplicacion.add_middleware(
+            CORSMiddleware, allow_origins=["*"], allow_credentials=False, allow_methods=["*"], allow_headers=["*"],
+        )
+
+
+configurar_cors(app, SEGURIDAD_ACTIVA, ALLOWED_ORIGINS)
 
 
 # --- 3b. AUTENTICACIÓN, ROLES Y AUDITORÍA (R.171-R.174, R.179, R.180, R.184, R.185) ---
 JWT_SECRET = os.getenv("JWT_SECRET")
 if not JWT_SECRET:
     JWT_SECRET = secrets.token_urlsafe(48)
-    logger.warning("JWT_SECRET no definido: se usa un secreto temporal (las sesiones se pierden al reiniciar).")
 JWT_HORAS = int(os.getenv("JWT_HORAS", "8"))
 TOTEM_API_KEY = os.getenv("TOTEM_API_KEY")
-if not TOTEM_API_KEY:
-    logger.warning("TOTEM_API_KEY no definido: el endpoint del tótem queda sin clave.")
+for _aviso in avisos_de_arranque(SEGURIDAD_ACTIVA, bool(os.getenv("JWT_SECRET")), bool(TOTEM_API_KEY)):
+    logger.warning(_aviso)
 
 ROLES_DASHBOARD = ("admin", "encargado")
 bearer = HTTPBearer(auto_error=False)
@@ -166,6 +205,8 @@ MAX_INTENTOS, VENTANA_SEG = 5, 15 * 60
 
 
 def _bloqueado(clave: str) -> bool:
+    if not SEGURIDAD_ACTIVA:
+        return False
     ahora = time.time()
     _intentos[clave] = [t for t in _intentos.get(clave, []) if ahora - t < VENTANA_SEG]
     return len(_intentos[clave]) >= MAX_INTENTOS
@@ -177,6 +218,8 @@ MAX_CONSULTAS, VENTANA_CONSULTAS_SEG = int(os.getenv("MAX_CONSULTAS_IDENTIDAD", 
 
 
 def _consulta_permitida(ip: Optional[str]) -> bool:
+    if not SEGURIDAD_ACTIVA:
+        return True
     ahora = time.time()
     recientes = [t for t in _consultas.get(ip, []) if ahora - t < VENTANA_CONSULTAS_SEG]
     if len(recientes) >= MAX_CONSULTAS:
@@ -207,6 +250,8 @@ def usuario_actual(
     cred: Optional[HTTPAuthorizationCredentials] = Depends(bearer),
     db: Session = Depends(get_db),
 ) -> dict:
+    if not SEGURIDAD_ACTIVA:
+        return USUARIO_ABIERTO
     ip = request.client.host if request.client else None
     if not cred:
         registrar_acceso(db, "acceso_sin_token", recurso=request.url.path, ip=ip)
@@ -227,7 +272,7 @@ def requiere_rol(*roles: str):
 
 
 def verificar_totem(x_totem_key: Optional[str] = Header(default=None)):
-    if TOTEM_API_KEY and not (x_totem_key and hmac.compare_digest(x_totem_key, TOTEM_API_KEY)):
+    if SEGURIDAD_ACTIVA and TOTEM_API_KEY and not (x_totem_key and hmac.compare_digest(x_totem_key, TOTEM_API_KEY)):
         raise HTTPException(status_code=401, detail="Tótem no autorizado")
 
 
@@ -262,6 +307,12 @@ manager = ConnectionManager()
 
 # --- 6. RUTAS Y ENDPOINTS ---
 
+# Lo consulta el dashboard para saber si debe pedir login. No expone nada sensible.
+@app.get("/api/configuracion")
+def obtener_configuracion():
+    return {"seguridad": SEGURIDAD_ACTIVA}
+
+
 @app.post("/api/auth/login")
 def login(payload: LoginPayload, request: Request, db: Session = Depends(get_db)):
     ip = request.client.host if request.client else None
@@ -284,8 +335,9 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     # El token viaja en el primer mensaje (no en la URL, para que no quede en logs).
     try:
-        primer = await asyncio.wait_for(websocket.receive_text(), timeout=10)
-        decodificar_token(json.loads(primer).get("token", ""))
+        if SEGURIDAD_ACTIVA:
+            primer = await asyncio.wait_for(websocket.receive_text(), timeout=10)
+            decodificar_token(json.loads(primer).get("token", ""))
     except Exception:
         db = SessionLocal()
         try:

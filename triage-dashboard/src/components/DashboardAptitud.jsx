@@ -7,7 +7,7 @@ import { hayCalibracionVencida, resumirDispositivos, resumirErrores } from '../l
 import { describirContacto, etiquetaDias, horaLocal } from '../lib/formato';
 import { FILTROS, alertaPendiente, describirOrigen, duracionEvaluacion, estadoRevision, filtrarCola, ordenarCola } from '../lib/cola';
 
-export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout }) {
+export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout, sinSeguridad = false }) {
   const [colaEstudiantes, setColaEstudiantes] = useState([]);
   const [estudianteSeleccionado, setEstudianteSeleccionado] = useState(null);
   const [filtro, setFiltro] = useState('todas');
@@ -19,7 +19,7 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout })
   // URL base del backend (NEXT_PUBLIC_BACKEND_URL; por defecto el publicado en Render)
   const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://totem-backend-g6yh.onrender.com';
   const WS_URL = BACKEND_URL.replace(/^http/, 'ws') + '/ws/dashboard';
-  const authHeaders = { Authorization: `Bearer ${sesion.token}` };
+  const authHeaders = sesion.token ? { Authorization: `Bearer ${sesion.token}` } : {};
 
   useEffect(() => {
     // 1. RECUPERAR HISTORIAL AL RECARGAR LA PÁGINA (Faltaba esto)
@@ -39,7 +39,7 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout })
     const socket = new WebSocket(WS_URL);
 
     // El token se envía en el primer mensaje; el servidor cierra la conexión si no es válido.
-    socket.onopen = () => socket.send(JSON.stringify({ token: sesion.token }));
+    socket.onopen = () => { if (sesion.token) socket.send(JSON.stringify({ token: sesion.token })); };
     socket.onclose = (ev) => { if (activo && ev.code === 4401) onSesionInvalida(); };
     socket.onerror = (error) => { if (activo) console.error('✗ Error en WebSocket:', error); };
 
@@ -155,8 +155,16 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout })
   return (
     <div className="min-h-screen bg-slate-100 p-6 flex flex-col font-sans">
       <div className="flex justify-end items-center gap-3 mb-3 text-xs text-slate-500">
-        <span>{sesion.usuario} · {sesion.rol}</span>
-        <button onClick={onLogout} className="font-semibold text-slate-700 underline">Cerrar sesión</button>
+        {sinSeguridad ? (
+          <span role="alert" className="font-semibold text-amber-800 bg-amber-100 border border-amber-300 rounded px-2 py-1">
+            Seguridad desactivada: cualquiera con la URL del backend puede ver y modificar estos datos.
+          </span>
+        ) : (
+          <>
+            <span>{sesion.usuario} · {sesion.rol}</span>
+            <button onClick={onLogout} className="font-semibold text-slate-700 underline">Cerrar sesión</button>
+          </>
+        )}
       </div>
       <div className="flex gap-4 mb-6">
         {[
