@@ -108,6 +108,8 @@ class MedicionCorporal(Base):
     vo2_max = Column(Float, nullable=True)  # EXT
     temperatura_c = Column(Float, nullable=True)  # EXT (R.43, aún sin sensor)
     saturacion_oxigeno = Column(Float, nullable=True)  # EXT (R.44, aún sin sensor)
+    dispositivos = Column(JSONType, nullable=True)  # EXT: sensor, calibración y hora de cada grupo de mediciones (R.58-R.60)
+    errores_medicion = Column(JSONType, nullable=True)  # EXT: problemas ocurridos al medir (R.65)
 
     sesion = relationship("SesionTotem", back_populates="mediciones")
 

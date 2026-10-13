@@ -61,13 +61,21 @@ def _a_int(valor) -> Optional[int]:
         return None
 
 
+def _ultima_captura(payload: EvaluacionPayload, fecha: datetime.datetime) -> datetime.datetime:
+    """Hora de la última medición informada por el tótem; si no es creíble (futura o de hace más de un día), `fecha`."""
+    capturas = [_aware(d.capturado_en) for d in payload.dispositivos.values() if d.capturado_en]
+    validas = [c for c in capturas if fecha - datetime.timedelta(hours=MAX_HORAS_INICIO) <= c <= fecha]
+    return max(validas) if validas else fecha
+
+
 def construir_entrada(payload: EvaluacionPayload) -> Entrada:
     """Prepara los datos de la evaluación para el motor (R.92): lo que no se midió queda en None (R.93)."""
     m, salud = payload.mediciones, payload.salud
     return Entrada(
         sintomas=tuple(salud.sintomas), condiciones=tuple(salud.condiciones), lesiones_previas=salud.lesionesPrevias,
         presion_sistolica=m.presionSys, presion_diastolica=m.presionDia, fc_reposo=m.fcReposo,
-        fc_recuperacion=m.fcRecup, imc=_a_float(m.imc),
+        fc_recuperacion=m.fcRecup, imc=_a_float(m.imc), spo2=m.spo2,
+        calibracion_vencida=tuple(s for s, d in payload.dispositivos.items() if d.calibracion == "vencida"),
     )
 
 
@@ -226,10 +234,13 @@ def guardar_evaluacion(db: Session, payload: EvaluacionPayload, ip: Optional[str
     db.flush()
 
     m = payload.mediciones
+    dispositivos = {s: d.model_dump(mode="json") for s, d in payload.dispositivos.items()}
     db.add(MedicionCorporal(
-        sesion_id=sesion.id, capturado_en=fecha,
+        sesion_id=sesion.id, capturado_en=_ultima_captura(payload, fecha),
+        dispositivos=dispositivos or None,
+        errores_medicion=[e.model_dump(mode="json") for e in payload.errores_medicion] or None,
         peso_kg=_a_float(m.peso), porcentaje_grasa=_a_float(m.grasa), imc=_a_float(m.imc),
-        vo2_max=_a_float(m.vo2Max), masa_muscular_kg=_a_float(m.masaMuscular),
+        vo2_max=_a_float(m.vo2Max), masa_muscular_kg=_a_float(m.masaMuscular), saturacion_oxigeno=m.spo2,
         frecuencia_cardiaca=m.fcReposo, fc_recuperacion=m.fcRecup,
         presion_sistolica=m.presionSys, presion_diastolica=m.presionDia,
     ))
@@ -383,7 +394,10 @@ def serializar_sesion(sesion: SesionTotem) -> dict:
             "grasa": fmt(med.porcentaje_grasa) if med else "",
             "vo2Max": fmt(med.vo2_max) if med else "",
             "masaMuscular": fmt(med.masa_muscular_kg) if med else "",
+            "spo2": int(med.saturacion_oxigeno) if med and med.saturacion_oxigeno is not None else None,
             "capturadoEn": _aware(med.capturado_en).isoformat() if med else None,
+            "dispositivos": (med.dispositivos or {}) if med else {},
+            "errores": (med.errores_medicion or []) if med else [],
             "validado": bool(med and med.validado),
         },
         "entrenamiento": {

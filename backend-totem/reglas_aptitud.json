@@ -10,6 +10,11 @@
     "A4": {"nombre": "Apto", "intensidad": "Intensidad normal"}
   },
 
+  "dispositivos": {
+    "tensiometro": "Tensiómetro", "oximetro": "Oxímetro", "oximetro_recuperacion": "Oxímetro (FC de recuperación)",
+    "balanza": "Balanza", "prueba_esfuerzo": "Prueba de esfuerzo", "banda_pecho": "Banda de pecho"
+  },
+
   "signos_vitales": {
     "presion_sistolica": {
       "etiqueta": "Presión sistólica", "unidad": "mmHg",
@@ -31,6 +36,14 @@
       "validos": {"min": 20, "max": 250},
       "precaucion_si": {"menor_que": 60, "mayor_o_igual_que": 101},
       "critico_si": {"menor_que": 40, "mayor_o_igual_que": 121},
+      "genera_alerta": true
+    },
+    "spo2": {
+      "etiqueta": "Saturación de oxígeno", "unidad": "%",
+      "nota": "Opcional: no descuenta confianza si falta. Precaución bajo 95 %, crítico bajo 90 % (valores generales, provisionales).",
+      "validos": {"min": 50, "max": 100},
+      "precaucion_si": {"menor_que": 95},
+      "critico_si": {"menor_que": 90},
       "genera_alerta": true
     },
     "imc": {
@@ -55,13 +68,14 @@
   },
 
   "confianza": {
-    "nota": "La confianza de las reglas mide la calidad de los datos, no una probabilidad clínica: parte de 1.0 y descuenta por datos faltantes, mediciones imposibles e inconsistencias.",
+    "nota": "La confianza de las reglas mide la calidad de los datos, no una probabilidad clínica: parte de 1.0 y descuenta por datos faltantes, mediciones imposibles, inconsistencias y dispositivos con la calibración vencida.",
     "base": 1.0,
     "falta_presion": 0.2,
     "falta_fc": 0.2,
     "falta_imc": 0.05,
     "medicion_invalida": 0.2,
     "inconsistencia": 0.15,
+    "calibracion_vencida": 0.1,
     "minimo": 0.05
   }
 }

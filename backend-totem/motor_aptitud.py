@@ -16,7 +16,8 @@ RUTA_POR_DEFECTO = Path(__file__).with_name("reglas_aptitud.json")
 GRAVEDAD = {"leve": 1, "precaucion": 2, "critico": 3}
 CATEGORIA_POR_GRAVEDAD = {0: "A4", 1: "A3", 2: "A2", 3: "A1"}
 GRAVEDAD_POR_CATEGORIA = {c: g for g, c in CATEGORIA_POR_GRAVEDAD.items()}
-VITALES = ("presion_sistolica", "presion_diastolica", "fc_reposo", "imc")
+VITALES = ("presion_sistolica", "presion_diastolica", "fc_reposo", "spo2", "imc")
+OPCIONALES = ("spo2",)   # si no se midió, no es un dato faltante ni baja la confianza
 
 
 class ConfiguracionInvalida(Exception):
@@ -34,6 +35,8 @@ class Entrada:
     fc_reposo: Optional[float] = None
     fc_recuperacion: Optional[float] = None
     imc: Optional[float] = None
+    spo2: Optional[float] = None
+    calibracion_vencida: tuple = ()   # sensores (claves de `dispositivos`) con la calibración vencida
 
 
 @dataclass(frozen=True)
@@ -85,7 +88,10 @@ def validar_configuracion(cfg: dict) -> dict:
     cuestionario = cfg.get("cuestionario", {})
     _exigir(isinstance(cuestionario.get("sintomas_criticos"), list), "Falta 'cuestionario.sintomas_criticos'")
     _exigir(isinstance(cuestionario.get("condiciones_criticas"), list), "Falta 'cuestionario.condiciones_criticas'")
-    for clave in ("base", "falta_presion", "falta_fc", "falta_imc", "medicion_invalida", "inconsistencia", "minimo"):
+    dispositivos = cfg.get("dispositivos")
+    _exigir(isinstance(dispositivos, dict) and dispositivos and all(isinstance(v, str) for v in dispositivos.values()),
+            "Falta 'dispositivos' (nombre legible de cada sensor)")
+    for clave in ("base", "falta_presion", "falta_fc", "falta_imc", "medicion_invalida", "inconsistencia", "calibracion_vencida", "minimo"):
         valor = cfg.get("confianza", {}).get(clave)
         _exigir(isinstance(valor, (int, float)) and valor >= 0, f"'confianza.{clave}' debe ser un número >= 0")
     return cfg
@@ -125,7 +131,8 @@ def _prepara_vitales(entrada: Entrada, cfg: dict):
         etiqueta = cfg["signos_vitales"][clave]["etiqueta"]
         validos = cfg["signos_vitales"][clave]["validos"]
         if crudo is None:
-            faltantes.append(clave)
+            if clave not in OPCIONALES:
+                faltantes.append(clave)
         elif not validos["min"] <= crudo <= validos["max"]:
             invalidos.append((clave, f"{etiqueta} {crudo} fuera de lo posible"))
         else:
@@ -185,9 +192,10 @@ def _inconsistencias(entrada: Entrada, valores: dict, cfg: dict) -> list:
 
 # ------------------------------------------------------------------------------------ confianza y decisión
 
-def _confianza(faltantes: list, invalidos: list, inconsistencias: list, cfg: dict) -> float:
+def _confianza(faltantes: list, invalidos: list, inconsistencias: list, vencidos: tuple, cfg: dict) -> float:
     c = cfg["confianza"]
-    descuento = len(invalidos) * c["medicion_invalida"] + len(inconsistencias) * c["inconsistencia"]
+    descuento = (len(invalidos) * c["medicion_invalida"] + len(inconsistencias) * c["inconsistencia"]
+                 + len(vencidos) * c["calibracion_vencida"])
     invalidas = {clave for clave, _ in invalidos}
     if {"presion_sistolica", "presion_diastolica"} & set(faltantes) and not {"presion_sistolica", "presion_diastolica"} & invalidas:
         descuento += c["falta_presion"]
@@ -213,9 +221,10 @@ def rutina_para(categoria: str, cfg: dict) -> str:
     return f"{info['nombre']}. {info['intensidad']}." if info else f"Categoría de aptitud {categoria}"
 
 
-def _factores(hallazgos: list, faltantes: list, invalidos: list, inconsistencias: list, cfg: dict) -> tuple:
+def _factores(hallazgos: list, faltantes: list, invalidos: list, inconsistencias: list, vencidos: tuple, cfg: dict) -> tuple:
     etiquetas = cfg["signos_vitales"]
     factores = [h.descripcion for h in hallazgos]
+    factores += [f"Calibración vencida: {cfg['dispositivos'].get(clave, clave)}" for clave in vencidos]
     factores += [f"Inconsistencia: {texto}" for texto in inconsistencias]
     factores += [f"Dato inválido: {texto}" for _, texto in invalidos]
     factores += [f"Dato faltante: {etiquetas[clave]['etiqueta']}" for clave in faltantes]
@@ -226,8 +235,9 @@ def evaluar(entrada: Entrada, cfg: dict) -> Resultado:
     valores, faltantes, invalidos = _prepara_vitales(entrada, cfg)
     hallazgos = _hallazgos_cuestionario(entrada, cfg) + _hallazgos_vitales(valores, cfg)
     inconsistencias = _inconsistencias(entrada, valores, cfg)
-    confianza = _confianza(faltantes, invalidos, inconsistencias, cfg)
-    factores = _factores(hallazgos, faltantes, invalidos, inconsistencias, cfg)
+    vencidos = tuple(sorted(set(entrada.calibracion_vencida)))
+    confianza = _confianza(faltantes, invalidos, inconsistencias, vencidos, cfg)
+    factores = _factores(hallazgos, faltantes, invalidos, inconsistencias, vencidos, cfg)
 
     gravedad = max((GRAVEDAD[h.severidad] for h in hallazgos), default=0)
     categoria = CATEGORIA_POR_GRAVEDAD[gravedad]
@@ -240,6 +250,7 @@ def evaluar(entrada: Entrada, cfg: dict) -> Resultado:
         if "fc_reposo" in faltantes:
             causas.append("falta la frecuencia cardíaca en reposo")
         causas += [texto.lower() for _, texto in invalidos] + [texto.lower() for texto in inconsistencias]
+        causas += [f"calibración vencida de {cfg['dispositivos'].get(clave, clave).lower()}" for clave in vencidos]
         motivo = f"Confianza baja ({round(confianza * 100)}%): " + ("; ".join(causas) or "datos incompletos")
     alerta, nivel = _alerta(hallazgos, requiere_revision)
     return Resultado(
