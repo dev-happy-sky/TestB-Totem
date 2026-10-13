@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import ValidacionAptitud from './ValidacionAptitud';
 import TendenciaSocio from './TendenciaSocio';
+import MenuUsuario from './MenuUsuario';
 import { ETIQUETA_SEVERIDAD, coincidenciaIA, nivelConfianza, nombreCategoria, porcentajeConfianza } from '../lib/ia';
 import { hayCalibracionVencida, resumirDispositivos, resumirErrores } from '../lib/mediciones';
 import { describirContacto, etiquetaDias, horaLocal } from '../lib/formato';
@@ -161,8 +162,8 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout, s
           </span>
         ) : (
           <>
-            <span>{sesion.usuario} · {sesion.rol}</span>
-            <button onClick={onLogout} className="font-semibold text-slate-700 underline">Cerrar sesión</button>
+            <MenuUsuario sesion={sesion} backendUrl={BACKEND_URL} authHeaders={authHeaders}
+                         onSesionInvalida={onSesionInvalida} onLogout={onLogout} />
           </>
         )}
       </div>

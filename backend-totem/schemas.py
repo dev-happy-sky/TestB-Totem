@@ -113,6 +113,48 @@ class LoginPayload(BaseModel):
     password: str
 
 
+class PerfilActualizacion(BaseModel):
+    """Datos que el propio personal puede cambiar. El correo (usuario) y el rol los define un administrador."""
+    nombre: str
+    apellido: str = ""
+    sucursal: Optional[str] = None
+    password_actual: Optional[str] = None
+    password_nueva: Optional[str] = None
+
+    @field_validator("nombre")
+    @classmethod
+    def _nombre(cls, v):
+        v = v.strip()
+        if not v or len(v) > 100:
+            raise ValueError("El nombre es obligatorio (máximo 100 caracteres)")
+        return v
+
+    @field_validator("apellido")
+    @classmethod
+    def _apellido(cls, v):
+        v = v.strip()
+        if len(v) > 100:
+            raise ValueError("El apellido admite hasta 100 caracteres")
+        return v
+
+    @field_validator("sucursal")
+    @classmethod
+    def _sucursal(cls, v):
+        v = (v or "").strip()
+        if len(v) > 100:
+            raise ValueError("La sucursal admite hasta 100 caracteres")
+        return v or None
+
+    @model_validator(mode="after")
+    def _cambio_de_contrasena(self):
+        if self.password_nueva:
+            if len(self.password_nueva) < 8:
+                raise ValueError("La contraseña nueva debe tener al menos 8 caracteres")
+            if not self.password_actual:
+                raise ValueError("Indica tu contraseña actual para cambiarla")
+        return self
+
+
 class IdentificarPayload(BaseModel):
     matricula: str
 

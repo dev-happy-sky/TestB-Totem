@@ -1,4 +1,5 @@
 import { render, screen, waitFor, act } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import DashboardAptitud from '../DashboardAptitud';
 
 const sesion = { token: 'tok123', rol: 'encargado', usuario: 'ana' };
@@ -107,11 +108,11 @@ test('los KPI cuentan pendientes, validados, riesgo alto y alertas', async () =>
   expect(kpi('ALERTAS PENDIENTES')).toBe('1');
 });
 
-test('cerrar sesión llama a onLogout y muestra el usuario', async () => {
+test('cerrar sesión (en el menú del usuario) llama a onLogout', async () => {
   mockHistorial([]);
   render(<DashboardAptitud {...props} />);
-  expect(screen.getByText('ana · encargado')).toBeInTheDocument();
-  screen.getByRole('button', { name: 'Cerrar sesión' }).click();
+  await userEvent.click(screen.getByRole('button', { name: /ana · encargado/ }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Cerrar sesión' }));
   expect(props.onLogout).toHaveBeenCalled();
 });
 
@@ -186,8 +187,7 @@ describe('modo sin seguridad (backend con SEGURIDAD_ACTIVA=false)', () => {
 
     // Assert
     expect(screen.getByRole('alert')).toHaveTextContent('Seguridad desactivada');
-    expect(screen.queryByRole('button', { name: 'Cerrar sesión' })).not.toBeInTheDocument();
-    expect(screen.queryByText(/Sin seguridad · admin/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Sin seguridad · admin/ })).not.toBeInTheDocument();
   });
 
   test('el WebSocket no envía ningún token', async () => {
@@ -213,8 +213,7 @@ describe('modo sin seguridad (backend con SEGURIDAD_ACTIVA=false)', () => {
     act(() => ws.onopen());
 
     // Assert
-    expect(screen.getByText('ana · encargado')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Cerrar sesión' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /ana · encargado/ })).toBeInTheDocument();
     expect(screen.queryByText(/Seguridad desactivada/)).not.toBeInTheDocument();
     expect(JSON.parse(ws.enviados[0])).toEqual({ token: 'tok123' });
   });
