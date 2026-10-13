@@ -737,3 +737,168 @@ describe('comparación entre la IA y el encargado (R.110)', () => {
     expect(screen.getByText('COINCIDENCIA IA').parentElement).toHaveTextContent('0%');
   });
 });
+
+describe('dispositivos, calibración y errores de medición (R.58-R.60, R.65)', () => {
+  const conSensores = (extra = {}) => evaluacion(1, {
+    mediciones: {
+      ...evaluacion(1).mediciones,
+      dispositivos: {
+        balanza: { id: 'SCALE-7', calibracion: 'vigente', capturado_en: new Date(2026, 9, 1, 10, 4).toISOString() },
+        tensiometro: { id: 'BP-01', calibracion: 'vigente', capturado_en: new Date(2026, 9, 1, 10, 2).toISOString() },
+      },
+      errores: [],
+      ...extra,
+    },
+  });
+
+  test('lista los dispositivos que tomaron las mediciones, con su calibración y hora', async () => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [conSensores()] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    const items = within(screen.getByRole('list', { name: 'Dispositivos de medición' })).getAllByRole('listitem');
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveTextContent('Tensiómetro · BP-01 · calibración vigente · 10:02');
+    expect(items[1]).toHaveTextContent('Balanza · SCALE-7 · calibración vigente · 10:04');
+  });
+
+  test('una calibración vencida se destaca y avisa que baja la confianza', async () => {
+    // Arrange
+    const e = conSensores({ dispositivos: { balanza: { id: 'SCALE-7', calibracion: 'vencida' } } });
+    mockApi({ 'GET /api/evaluaciones': { body: [e] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.getByText('calibración vencida')).toHaveClass('text-red-600');
+    expect(screen.getByRole('note')).toBeInTheDocument();
+    expect(screen.getByText(/Hay dispositivos con la calibración vencida/)).toBeInTheDocument();
+  });
+
+  test('con calibración vigente no aparece el aviso', async () => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [conSensores()] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.queryByText(/Hay dispositivos con la calibración vencida/)).not.toBeInTheDocument();
+  });
+
+  test('lista los errores ocurridos durante la medición', async () => {
+    // Arrange
+    const e = conSensores({
+      errores: [
+        { sensor: 'tensiometro', codigo: 'movimiento', mensaje: 'Se detectó movimiento durante la medición', ocurrido_en: new Date(2026, 9, 1, 10, 1).toISOString() },
+        { sensor: 'balanza', codigo: 'lectura_invalida', mensaje: 'Peso 999 kg está fuera de lo posible', ocurrido_en: null },
+      ],
+    });
+    mockApi({ 'GET /api/evaluaciones': { body: [e] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.getByText('Errores durante la medición (2)')).toBeInTheDocument();
+    expect(screen.getByText('Tensiómetro: Movimiento durante la medición — Se detectó movimiento durante la medición (10:01)')).toBeInTheDocument();
+    expect(screen.getByText('Balanza: Lectura inválida — Peso 999 kg está fuera de lo posible')).toBeInTheDocument();
+  });
+
+  test('sin dispositivos ni errores no muestra esas secciones', async () => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [evaluacion(1)] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.queryByRole('list', { name: 'Dispositivos de medición' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Errores durante la medición/)).not.toBeInTheDocument();
+  });
+});
+
+describe('saturación de oxígeno del oxímetro', () => {
+  const conSpo2 = (spo2) => evaluacion(1, { mediciones: { ...evaluacion(1).mediciones, spo2 } });
+
+  test('muestra la SpO₂ medida', async () => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [conSpo2(97)] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.getByText('SpO₂').nextSibling).toHaveTextContent('97');
+    expect(screen.getByText('SpO₂').nextSibling).toHaveClass('text-slate-800');
+  });
+
+  test.each([[94], [90], [85]])('una SpO₂ de %p se destaca en rojo', async (spo2) => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [conSpo2(spo2)] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.getByText('SpO₂').nextSibling).toHaveClass('text-red-600');
+  });
+
+  test('una SpO₂ de 95 % es normal', async () => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [conSpo2(95)] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.getByText('SpO₂').nextSibling).toHaveClass('text-slate-800');
+  });
+
+  test.each([[null], [undefined]])('sin SpO₂ (%p) muestra guiones', async (spo2) => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [conSpo2(spo2)] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.getByText('SpO₂').nextSibling).toHaveTextContent('--');
+  });
+
+  test('lista el oxímetro y su medición de recuperación entre los dispositivos', async () => {
+    // Arrange
+    const e = evaluacion(1, {
+      mediciones: {
+        ...evaluacion(1).mediciones,
+        dispositivos: {
+          oximetro_recuperacion: { id: 'OXI-1', calibracion: 'desconocida' },
+          oximetro: { id: 'OXI-1', calibracion: 'desconocida' },
+        },
+      },
+    });
+    mockApi({ 'GET /api/evaluaciones': { body: [e] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    const items = within(screen.getByRole('list', { name: 'Dispositivos de medición' })).getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('Oxímetro · OXI-1 · calibración sin informar');
+    expect(items[1]).toHaveTextContent('Oxímetro (FC de recuperación) · OXI-1');
+  });
+});
