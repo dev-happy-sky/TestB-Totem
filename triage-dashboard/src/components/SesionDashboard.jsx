@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, useCallback } from 'react';
 import DashboardAptitud from './DashboardAptitud';
+import { MENSAJE_SIN_RESPUESTA, describirServidor, mensajeErrorLogin } from '../lib/errores';
 
 export const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://totem-backend-g6yh.onrender.com';
 const INACTIVIDAD_MS = 15 * 60 * 1000; // R.174: cierre de sesión tras 15 min sin actividad
@@ -58,7 +59,7 @@ export default function SesionDashboard() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.detail || 'No se pudo iniciar sesión.');
+        setError(mensajeErrorLogin(res.status, data));
         return;
       }
       const nueva = { token: data.token, rol: data.rol, usuario: data.usuario };
@@ -66,7 +67,7 @@ export default function SesionDashboard() {
       setSesion(nueva);
       setPassword('');
     } catch {
-      setError('No se pudo comunicar con el servidor.');
+      setError(MENSAJE_SIN_RESPUESTA);
     } finally {
       setCargando(false);
     }
@@ -97,6 +98,7 @@ export default function SesionDashboard() {
         <button type="submit" disabled={cargando} className="w-full bg-orange-600 text-white font-bold rounded-lg py-2 disabled:opacity-60">
           {cargando ? 'Ingresando…' : 'Ingresar'}
         </button>
+        <p className="text-xs text-slate-400 text-center">Servidor: {describirServidor(BACKEND_URL)}</p>
       </form>
     </div>
   );

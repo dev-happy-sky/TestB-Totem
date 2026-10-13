@@ -55,12 +55,50 @@ test('credenciales inválidas muestran el error del servidor', async () => {
   expect(screen.queryByText(/Dashboard de/)).not.toBeInTheDocument();
 });
 
+test.each([
+  [404, {}, /backend publicado está desactualizado/],
+  [401, { detail: 'Credenciales inválidas' }, /Credenciales inválidas/],
+  [429, { detail: 'Demasiados intentos. Intenta más tarde.' }, /Demasiados intentos/],
+  [500, {}, /El servidor tuvo un error \(código 500\)/],
+  [422, { detail: [{ msg: 'Field required' }] }, /el formato no es válido/],
+])('un %i del servidor muestra un mensaje que explica la causa', async (estado, cuerpo, esperado) => {
+  // Arrange
+  global.fetch.mockResolvedValue({ ok: false, status: estado, json: async () => cuerpo });
+  render(<SesionDashboard />);
+
+  // Act
+  await iniciarSesion();
+
+  // Assert
+  expect(await screen.findByRole('alert')).toHaveTextContent(esperado);
+});
+
+test('una respuesta que no es JSON (por ejemplo una página de error) no rompe el login', async () => {
+  // Arrange
+  global.fetch.mockResolvedValue({ ok: false, status: 502, json: async () => { throw new SyntaxError('no es JSON'); } });
+  render(<SesionDashboard />);
+
+  // Act
+  await iniciarSesion();
+
+  // Assert
+  expect(await screen.findByRole('alert')).toHaveTextContent('código 502');
+});
+
+test('el login muestra a qué servidor apunta el dashboard, sin credenciales', () => {
+  // Arrange / Act
+  render(<SesionDashboard />);
+
+  // Assert
+  expect(screen.getByText(/^Servidor: /)).toHaveTextContent(/Servidor: [\w.-]+(:\d+)?$/);
+});
+
 test('error de red muestra un mensaje y no rompe el formulario', async () => {
   global.fetch.mockRejectedValue(new Error('network'));
   render(<SesionDashboard />);
   await iniciarSesion();
 
-  expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo comunicar con el servidor.');
+  expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo comunicar con el servidor. Revisa que el backend esté activo y que permita este dominio (CORS).');
 });
 
 test('restaura la sesión guardada al recargar la página', async () => {

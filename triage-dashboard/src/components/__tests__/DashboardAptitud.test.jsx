@@ -114,3 +114,49 @@ test('cerrar sesión llama a onLogout y muestra el usuario', async () => {
   screen.getByRole('button', { name: 'Cerrar sesión' }).click();
   expect(props.onLogout).toHaveBeenCalled();
 });
+
+describe('cierre del WebSocket al desmontar', () => {
+  test('un error del socket que se cerró a propósito no se registra como error', async () => {
+    // Arrange
+    mockHistorial([]);
+    const { unmount } = render(<DashboardAptitud {...props} />);
+    const ws = FakeWebSocket.instancias[0];
+    ws.close = jest.fn();
+
+    // Act
+    unmount();
+    console.error.mockClear();
+    ws.onerror({ type: 'error' });
+
+    // Assert
+    expect(ws.close).toHaveBeenCalled();
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  test('un código 4401 recibido después de desmontar no cierra la sesión', async () => {
+    // Arrange
+    mockHistorial([]);
+    const { unmount } = render(<DashboardAptitud {...props} />);
+    const ws = FakeWebSocket.instancias[0];
+
+    // Act
+    unmount();
+    ws.onclose({ code: 4401 });
+
+    // Assert
+    expect(props.onSesionInvalida).not.toHaveBeenCalled();
+  });
+
+  test('un error real del socket mientras el panel está abierto sí se registra', async () => {
+    // Arrange
+    mockHistorial([]);
+    render(<DashboardAptitud {...props} />);
+    console.error.mockClear();
+
+    // Act
+    FakeWebSocket.instancias[0].onerror({ type: 'error' });
+
+    // Assert
+    expect(console.error).toHaveBeenCalledWith('✗ Error en WebSocket:', { type: 'error' });
+  });
+});
