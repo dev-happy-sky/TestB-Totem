@@ -258,7 +258,7 @@ describe('crearSensores con el oxímetro real', () => {
     process.env.EXPO_PUBLIC_SENSORES = 'bluetooth';
 
     // Act / Assert
-    expect(() => crearSensores()).toThrow('Usa "simulado" u "oximetro_puente"');
+    expect(() => crearSensores()).toThrow('Usa "simulado", "oximetro_puente" u "oximetro_web"');
   });
 });
 
