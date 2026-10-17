@@ -22,21 +22,49 @@ type RespuestaMedicion = {
   dispositivo: { id: string; calibracion: 'vigente' | 'vencida' | 'desconocida' };
 };
 
+/** Petición HTTP al puente (oxímetro o báscula) con la clave opcional y un tiempo máximo. */
+export async function pedirAlPuente(config: ConfiguracionPuente, ruta: string, metodo: 'GET' | 'POST', timeoutMs: number): Promise<Response> {
+  const control = new AbortController();
+  const temporizador = setTimeout(() => control.abort(), timeoutMs);
+  const encabezados = { Accept: 'application/json', ...(config.clave ? { 'X-Puente-Key': config.clave } : {}) };
+  try {
+    return await fetch(`${config.url.replace(/\/$/, '')}${ruta}`, { method: metodo, headers: encabezados, signal: control.signal });
+  } finally {
+    clearTimeout(temporizador);
+  }
+}
+
+/** POST /medir: devuelve el cuerpo de la medición o lanza `ErrorSensor` con los mismos códigos que el backend entiende. */
+export async function medirPorPuente<T>(config: ConfiguracionPuente, timeoutPorDefectoMs: number, nombres: { sensor: string; puente: string }): Promise<T> {
+  let respuesta: Response;
+  try {
+    respuesta = await pedirAlPuente(config, '/medir', 'POST', config.timeoutMedicionMs ?? timeoutPorDefectoMs);
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new ErrorSensor('timeout', `${nombres.sensor} tardó demasiado en responder`);
+    }
+    throw new ErrorSensor('desconectado', `No se pudo comunicar con ${nombres.puente}`);
+  }
+
+  let cuerpo: unknown;
+  try {
+    cuerpo = await respuesta.json();
+  } catch {
+    throw new ErrorSensor('error', `Respuesta inesperada de ${nombres.puente} (${respuesta.status})`);
+  }
+  if (!respuesta.ok) {
+    const { codigo, mensaje } = (cuerpo ?? {}) as { codigo?: string; mensaje?: string };
+    const conocido = CODIGOS.find((c) => c === codigo) ?? 'error';
+    throw new ErrorSensor(conocido, mensaje || `${nombres.puente[0].toUpperCase()}${nombres.puente.slice(1)} respondió ${respuesta.status}`);
+  }
+  return cuerpo as T;
+}
+
 export class SensorOximetroPuente implements Sensor {
   constructor(public readonly tipo: Extract<TipoSensor, 'oximetro' | 'oximetro_recuperacion'>, private readonly config: ConfiguracionPuente) {}
 
-  private encabezados(): Record<string, string> {
-    return { Accept: 'application/json', ...(this.config.clave ? { 'X-Puente-Key': this.config.clave } : {}) };
-  }
-
-  private async pedir(ruta: string, metodo: 'GET' | 'POST', timeoutMs: number): Promise<Response> {
-    const control = new AbortController();
-    const temporizador = setTimeout(() => control.abort(), timeoutMs);
-    try {
-      return await fetch(`${this.config.url.replace(/\/$/, '')}${ruta}`, { method: metodo, headers: this.encabezados(), signal: control.signal });
-    } finally {
-      clearTimeout(temporizador);
-    }
+  private pedir(ruta: string, metodo: 'GET' | 'POST', timeoutMs: number): Promise<Response> {
+    return pedirAlPuente(this.config, ruta, metodo, timeoutMs);
   }
 
   async disponible(): Promise<boolean> {
@@ -65,29 +93,7 @@ export class SensorOximetroPuente implements Sensor {
   }
 
   async medir(): Promise<Lectura> {
-    let respuesta: Response;
-    try {
-      respuesta = await this.pedir('/medir', 'POST', this.config.timeoutMedicionMs ?? 30000);
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new ErrorSensor('timeout', 'El oxímetro tardó demasiado en responder');
-      }
-      throw new ErrorSensor('desconectado', 'No se pudo comunicar con el puente del oxímetro');
-    }
-
-    let cuerpo: unknown;
-    try {
-      cuerpo = await respuesta.json();
-    } catch {
-      throw new ErrorSensor('error', `Respuesta inesperada del puente del oxímetro (${respuesta.status})`);
-    }
-    if (!respuesta.ok) {
-      const { codigo, mensaje } = (cuerpo ?? {}) as { codigo?: string; mensaje?: string };
-      const conocido = CODIGOS.find((c) => c === codigo) ?? 'error';
-      throw new ErrorSensor(conocido, mensaje || `El puente del oxímetro respondió ${respuesta.status}`);
-    }
-
-    const medicion = cuerpo as RespuestaMedicion;
+    const medicion = await medirPorPuente<RespuestaMedicion>(this.config, 30000, { sensor: 'El oxímetro', puente: 'el puente del oxímetro' });
     const valores = this.tipo === 'oximetro' ? { spo2: medicion.spo2, fcReposo: medicion.fc } : { fcRecup: medicion.fc };
     return { sensor: this.tipo, valores, dispositivo: medicion.dispositivo, capturadoEn: medicion.capturado_en };
   }

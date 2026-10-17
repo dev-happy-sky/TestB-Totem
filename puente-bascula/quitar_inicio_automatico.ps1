@@ -1,0 +1,9 @@
+﻿# Quita la tarea de inicio automático y detiene el puente.
+$nombre = 'PuenteBascula'
+if (Get-ScheduledTask -TaskName $nombre -ErrorAction SilentlyContinue) {
+    Stop-ScheduledTask -TaskName $nombre -ErrorAction SilentlyContinue
+    Unregister-ScheduledTask -TaskName $nombre -Confirm:$false
+    Write-Host "Tarea '$nombre' eliminada."
+} else {
+    Write-Host "La tarea '$nombre' no existe."
+}

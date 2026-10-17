@@ -50,6 +50,12 @@ Según dónde corra la app:
 
 Android bloquea `http://` en builds de producción; en desarrollo funciona.
 
+### Báscula real
+
+Igual que el oxímetro, vía `puente-bascula/` (puerto 8766): `EXPO_PUBLIC_SENSORES=oximetro_puente,bascula_puente`, con
+`EXPO_PUBLIC_PUENTE_BASCULA_URL` y `EXPO_PUBLIC_PUENTE_BASCULA_KEY`. La tarjeta Balanza muestra el peso en vivo, y solo entrega
+el **peso** (IMC, grasa y masa muscular quedan como dato faltante). También admite ingresar el peso a mano.
+
 ## Get a fresh project
 
 When you're ready, run:

@@ -44,8 +44,10 @@ export type LecturaEnVivo = {
   valida: boolean;
   spo2?: number;
   fc?: number;
-  /** Por qué no hay valor: el sensor no está conectado, no envía datos o no detecta el dedo. */
-  motivo?: 'desconectado' | 'sin_senal' | 'sin_dedo';
+  /** Peso en kg (báscula). */
+  peso?: number;
+  /** Por qué no hay valor: el sensor no está conectado, no envía datos, no detecta el dedo o nadie está sobre la báscula. */
+  motivo?: 'desconectado' | 'sin_senal' | 'sin_dedo' | 'sin_carga';
 };
 
 export interface Sensor {
