@@ -236,7 +236,7 @@ describe('registro manual del oxímetro', () => {
   const abrir = async (nombre = 'Oxímetro') => fireEvent.press(screen.getByLabelText(`Ingresar manualmente ${nombre}`));
   const escribir = async (etiqueta: string, texto: string) => fireEvent.changeText(screen.getByLabelText(etiqueta), texto);
 
-  test('solo los oxímetros ofrecen ingresar los valores a mano', async () => {
+  test('solo los oxímetros y la balanza ofrecen ingresar los valores a mano', async () => {
     // Arrange / Act
     await montar();
 
@@ -244,7 +244,8 @@ describe('registro manual del oxímetro', () => {
     expect(screen.getByLabelText('Ingresar manualmente Oxímetro')).toBeTruthy();
     expect(screen.getByLabelText('Ingresar manualmente Oxímetro (FC de recuperación)')).toBeTruthy();
     expect(screen.queryByLabelText('Ingresar manualmente Tensiómetro')).toBeNull();
-    expect(screen.queryByLabelText('Ingresar manualmente Balanza')).toBeNull();
+    expect(screen.getByLabelText('Ingresar manualmente Balanza')).toBeTruthy();
+    expect(screen.queryByLabelText('Ingresar manualmente Prueba de esfuerzo')).toBeNull();
   });
 
   test('registra SpO₂ y FC escritos a mano como una lectura del dispositivo "manual"', async () => {
@@ -432,4 +433,69 @@ describe('lectura en vivo del oxímetro', () => {
     // Assert
     expect(screen.queryByLabelText('En vivo Oxímetro')).toBeNull();
   });
+});
+
+describe('báscula: lectura en vivo y peso manual', () => {
+  const montarBascula = async (secuencia: LecturaEnVivo[]) => {
+    const simulados = crearSensoresSimulados({ latenciaMs: 0, azar: () => 0.5 });
+    let i = 0;
+    const enVivo = jest.fn(async () => secuencia[Math.min(i++, secuencia.length - 1)]);
+    const balanza: Sensor = { ...simulados.balanza, tipo: 'balanza', disponible: async () => true, medir: simulados.balanza.medir.bind(simulados.balanza), enVivo };
+    const alLeer = jest.fn();
+    await render(
+      <PasoMediciones sensores={{ ...simulados, balanza }} lecturas={{}} onLectura={alLeer} onError={jest.fn()} intervaloEnVivoMs={20} />,
+    );
+    return { alLeer };
+  };
+
+  test('muestra el peso que emite la báscula sin pulsar nada', async () => {
+    // Arrange / Act
+    await montarBascula([{ valida: true, peso: 53.4 }]);
+
+    // Assert
+    expect(await screen.findByText('Peso 53.4 kg')).toBeTruthy();
+    expect(screen.getByLabelText('En vivo Balanza')).toBeTruthy();
+  });
+
+  test.each([
+    ['sin_carga', 'Súbete a la báscula'], ['sin_senal', 'Súbete a la báscula'], ['desconectado', 'Báscula no disponible'],
+  ] as const)('sin peso explica qué hacer (%s)', async (motivo, texto) => {
+    // Arrange / Act
+    await montarBascula([{ valida: false, motivo }]);
+
+    // Assert
+    expect(await screen.findByText(texto)).toBeTruthy();
+  });
+
+  test('el peso manual acepta decimales (con coma) y se registra con un decimal como dispositivo manual', async () => {
+    // Arrange
+    const { alLeer } = await montarBascula([{ valida: false, motivo: 'sin_senal' }]);
+    await fireEvent.press(screen.getByLabelText('Ingresar manualmente Balanza'));
+
+    // Act
+    await fireEvent.changeText(screen.getByLabelText('PESO manual'), '53,4');
+    await fireEvent.press(screen.getByLabelText('Registrar valores de Balanza'));
+
+    // Assert
+    await waitFor(() => expect(alLeer).toHaveBeenCalledTimes(1));
+    expect(alLeer.mock.calls[0][0]).toMatchObject({
+      sensor: 'balanza', valores: { peso: '53.4' }, dispositivo: { id: 'manual', calibracion: 'desconocida' },
+    });
+    expect(Object.keys(alLeer.mock.calls[0][0].valores)).toEqual(['peso']);
+  });
+
+  test.each([['', 'ingresa un número'], ['abc', 'ingresa un número'], ['900', 'fuera de lo posible'], ['5', 'fuera de lo posible']])(
+    'un peso manual inválido (%j) se rechaza', async (texto, mensaje) => {
+      // Arrange
+      const { alLeer } = await montarBascula([{ valida: false, motivo: 'sin_senal' }]);
+      await fireEvent.press(screen.getByLabelText('Ingresar manualmente Balanza'));
+
+      // Act
+      await fireEvent.changeText(screen.getByLabelText('PESO manual'), texto);
+      await fireEvent.press(screen.getByLabelText('Registrar valores de Balanza'));
+
+      // Assert
+      expect((await screen.findByRole('alert')).props.children).toContain(mensaje);
+      expect(alLeer).not.toHaveBeenCalled();
+    });
 });

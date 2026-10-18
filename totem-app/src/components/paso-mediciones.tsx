@@ -38,7 +38,7 @@ const anormal = (clave: keyof ValoresMedidos, valores: ValoresMedidos): boolean 
   }
 };
 
-type Campo = { clave: keyof ValoresMedidos; etiqueta: string; unidad: string };
+type Campo = { clave: keyof ValoresMedidos; etiqueta: string; unidad: string; decimal?: boolean };
 
 const CAMPOS: Record<TipoSensor, Campo[]> = {
   tensiometro: [
@@ -59,16 +59,26 @@ const CAMPOS: Record<TipoSensor, Campo[]> = {
   prueba_esfuerzo: [{ clave: 'vo2Max', etiqueta: 'VO₂ MÁX', unidad: 'ml/kg·min' }],
 };
 
-// Sensores cuyos valores también pueden registrarse a mano (el oxímetro se lee de la pantalla del dispositivo).
-const MANUALES: readonly TipoSensor[] = ['oximetro', 'oximetro_recuperacion'];
+// Sensores cuyos valores también pueden registrarse a mano (se leen de la pantalla del dispositivo). De la balanza solo el peso:
+// IMC, grasa y masa muscular necesitan otros instrumentos.
+const MANUALES: readonly TipoSensor[] = ['oximetro', 'oximetro_recuperacion', 'balanza'];
+const camposManuales = (tipo: TipoSensor): Campo[] =>
+  tipo === 'balanza' ? [{ clave: 'peso', etiqueta: 'PESO', unidad: 'kg', decimal: true }] : CAMPOS[tipo];
 export const ID_DISPOSITIVO_MANUAL = 'manual';
 
 type Manual = { valores: Record<string, string>; error: string };
 
-const MENSAJE_EN_VIVO: Record<NonNullable<LecturaEnVivo['motivo']>, string> = {
-  desconectado: 'Oxímetro no conectado',
-  sin_senal: 'Sin señal del oxímetro',
-  sin_dedo: 'Coloca el dedo en el oxímetro',
+const mensajeEnVivo = (tipo: TipoSensor, motivo: LecturaEnVivo['motivo']): string => {
+  if (tipo === 'balanza') {
+    return motivo === 'desconectado' ? 'Báscula no disponible' : 'Súbete a la báscula';
+  }
+  if (motivo === 'desconectado') return 'Oxímetro no conectado';
+  return motivo === 'sin_dedo' ? 'Coloca el dedo en el oxímetro' : 'Sin señal del oxímetro';
+};
+
+const textoEnVivo = (tipo: TipoSensor, vivo: LecturaEnVivo): string => {
+  if (tipo === 'balanza') return `Peso ${vivo.peso?.toFixed(1)} kg`;
+  return `${tipo === 'oximetro' ? `SpO₂ ${vivo.spo2} %  ·  ` : ''}FC ${vivo.fc} lpm`;
 };
 
 export default function PasoMediciones({ sensores, lecturas, onLectura, onError, intervaloEnVivoMs = 1000 }: Props) {
@@ -143,14 +153,16 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
   // automática y queda marcado con el dispositivo "manual" para que el encargado sepa que no vino del sensor.
   const registrarManual = (tipo: TipoSensor) => {
     const valores: ValoresMedidos = {};
-    for (const campo of CAMPOS[tipo]) {
+    for (const campo of camposManuales(tipo)) {
       const texto = (manuales[tipo]?.valores[campo.clave] ?? '').trim().replace(',', '.');
       const numero = Number(texto);
-      if (!texto || !Number.isInteger(numero)) {
-        setManuales((previo) => ({ ...previo, [tipo]: { valores: previo[tipo]?.valores ?? {}, error: `${campo.etiqueta}: ingresa un número entero` } }));
+      if (!texto || !(campo.decimal ? Number.isFinite(numero) : Number.isInteger(numero))) {
+        const que = campo.decimal ? 'un número' : 'un número entero';
+        setManuales((previo) => ({ ...previo, [tipo]: { valores: previo[tipo]?.valores ?? {}, error: `${campo.etiqueta}: ingresa ${que}` } }));
         return;
       }
-      (valores as Record<string, number>)[campo.clave] = numero;
+      // El peso viaja como texto con un decimal (igual que el de la balanza simulada); el resto, como número.
+      (valores as Record<string, number | string>)[campo.clave] = campo.decimal ? numero.toFixed(1) : numero;
     }
     const lectura: Lectura = {
       sensor: tipo, valores, dispositivo: { id: ID_DISPOSITIVO_MANUAL, calibracion: 'desconocida' }, capturadoEn: new Date().toISOString(),
@@ -195,11 +207,9 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
               <View style={estilos.enVivo} accessibilityLabel={`En vivo ${etiqueta}`}>
                 <Text style={estilos.enVivoTitulo}>EN VIVO</Text>
                 {enVivo[tipo]!.valida ? (
-                  <Text style={estilos.enVivoValor}>
-                    {tipo === 'oximetro' ? `SpO₂ ${enVivo[tipo]!.spo2} %  ·  ` : ''}FC {enVivo[tipo]!.fc} lpm
-                  </Text>
+                  <Text style={estilos.enVivoValor}>{textoEnVivo(tipo, enVivo[tipo]!)}</Text>
                 ) : (
-                  <Text style={estilos.enVivoSinDato}>{MENSAJE_EN_VIVO[enVivo[tipo]!.motivo ?? 'sin_senal']}</Text>
+                  <Text style={estilos.enVivoSinDato}>{mensajeEnVivo(tipo, enVivo[tipo]!.motivo)}</Text>
                 )}
               </View>
             )}
@@ -219,11 +229,11 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
             {MANUALES.includes(tipo) && estado.tipo !== 'midiendo' && (manuales[tipo] ? (
               <View style={estilos.manual}>
                 <View style={estilos.fila}>
-                  {CAMPOS[tipo].map((campo) => (
+                  {camposManuales(tipo).map((campo) => (
                     <View key={campo.clave} style={estilos.campo}>
                       <Text style={estilos.etiqueta}>{campo.etiqueta} ({campo.unidad})</Text>
                       <TextInput
-                        style={estilos.entrada} keyboardType="number-pad" maxLength={3}
+                        style={estilos.entrada} keyboardType={campo.decimal ? 'decimal-pad' : 'number-pad'} maxLength={campo.decimal ? 5 : 3}
                         value={manuales[tipo]?.valores[campo.clave] ?? ''}
                         onChangeText={(texto) => escribirManual(tipo, campo.clave, texto)}
                         accessibilityLabel={`${campo.etiqueta} manual`}
