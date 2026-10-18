@@ -105,6 +105,7 @@ class MedicionCorporal(Base):
     validado = Column(Boolean, default=False, nullable=False)
     fc_recuperacion = Column(Float, nullable=True)  # EXT
     imc = Column(Float, nullable=True)  # EXT
+    estatura_cm = Column(Float, nullable=True)  # EXT: la escribe la persona en el tótem; con el peso da el IMC
     vo2_max = Column(Float, nullable=True)  # EXT
     temperatura_c = Column(Float, nullable=True)  # EXT (R.43, aún sin sensor)
     saturacion_oxigeno = Column(Float, nullable=True)  # EXT (R.44, aún sin sensor)

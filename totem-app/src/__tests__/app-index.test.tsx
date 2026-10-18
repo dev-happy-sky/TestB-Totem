@@ -1160,7 +1160,7 @@ describe('estatura manual e IMC', () => {
     expect(cuerpo.mediciones.imc).toBeUndefined();
   });
 
-  test('la estatura no se envía como un dato más: solo viaja el IMC', async () => {
+  test('la estatura viaja con las mediciones, en cm con un decimal, junto al peso y el IMC', async () => {
     // Arrange
     usarBasculaSoloPeso();
     conEnvio();
@@ -1173,7 +1173,38 @@ describe('estatura manual e IMC', () => {
     const cuerpo = await avanzarYEnviar();
 
     // Assert
-    expect(JSON.stringify(cuerpo)).not.toMatch(/estatura|altura|172/i);
+    expect(cuerpo.mediciones).toMatchObject({ peso: '53.7', estatura: '172.0', imc: '18.2' });
+  });
+
+  test('sin estatura escrita no se envía el campo', async () => {
+    // Arrange
+    usarSensores();
+    conEnvio();
+    await llegarAlPaso2();
+    await medirTodo();
+
+    // Act
+    await fireEvent.press(screen.getByText('Continuar →'));
+    const cuerpo = await avanzarYEnviar();
+
+    // Assert
+    expect(cuerpo.mediciones).not.toHaveProperty('estatura');
+  });
+
+  test('una estatura con coma decimal viaja con punto', async () => {
+    // Arrange
+    usarBasculaSoloPeso();
+    conEnvio();
+    await llegarAlPaso2();
+    await medirTodo();
+    await guardarEstatura('172,5');
+
+    // Act
+    await fireEvent.press(screen.getByText('Continuar →'));
+    const cuerpo = await avanzarYEnviar();
+
+    // Assert
+    expect(cuerpo.mediciones.estatura).toBe('172.5');
   });
 
   test('si se cambia el peso después, el IMC se recalcula con la misma estatura', async () => {

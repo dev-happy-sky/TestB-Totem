@@ -60,7 +60,7 @@ brazalete. Solo se usan la sistólica y la diastólica. También admite ingresar
 
 El paso de mediciones tiene una tarjeta **Estatura e IMC**: se escribe la estatura a mano (en cm, entre 100 y 250) y, con el peso de la
 báscula, la app calcula el IMC (peso / estatura²) y lo envía en la evaluación. El IMC calculado reemplaza al que traiga un sensor. La
-estatura en sí no se envía ni se guarda. Si la báscula solo entrega el peso y no se escribió la estatura, la app avisa antes de continuar.
+estatura también viaja en `mediciones.estatura` (cm) y el dashboard la muestra junto al peso y el IMC. Si la báscula solo entrega el peso y no se escribió la estatura, la app avisa antes de continuar.
 
 ### Báscula real
 

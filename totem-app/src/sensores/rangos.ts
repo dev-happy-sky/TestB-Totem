@@ -31,6 +31,7 @@ export const RANGOS_POSIBLES: Record<keyof ValoresMedidos, Rango> = {
   fcRecup: { min: 20, max: 250, etiqueta: 'Frecuencia cardíaca de recuperación', unidad: 'lpm' },
   spo2: { min: 50, max: 100, etiqueta: 'Saturación de oxígeno', unidad: '%' },
   peso: { min: 20, max: 400, etiqueta: 'Peso', unidad: 'kg' },
+  estatura: { min: 100, max: 250, etiqueta: 'Estatura', unidad: 'cm' },   // mismos límites que ESTATURA_MIN/MAX_CM
   imc: { min: 10, max: 80, etiqueta: 'IMC', unidad: 'kg/m²' },
   grasa: { min: 2, max: 70, etiqueta: 'Grasa corporal', unidad: '%' },
   masaMuscular: { min: 5, max: 150, etiqueta: 'Masa muscular', unidad: 'kg' },

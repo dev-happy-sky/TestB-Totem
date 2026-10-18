@@ -14,7 +14,7 @@ export type CodigoError = 'desconectado' | 'timeout' | 'movimiento' | 'lectura_i
 /** Valores que entrega cada sensor. Los nombres coinciden con el campo `mediciones` de la evaluación. */
 export type ValoresMedidos = Partial<{
   presionSys: number; presionDia: number; fcReposo: number; fcRecup: number; spo2: number;
-  peso: string; imc: string; grasa: string; masaMuscular: string; vo2Max: string;
+  peso: string; imc: string; grasa: string; masaMuscular: string; vo2Max: string; estatura: string;
 }>;
 
 export type Lectura = {
