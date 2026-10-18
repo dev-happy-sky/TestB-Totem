@@ -50,6 +50,12 @@ Según dónde corra la app:
 
 Android bloquea `http://` en builds de producción; en desarrollo funciona.
 
+### Tensiómetro real
+
+Vía `puente-tensiometro/` (puerto 8767, Beurer BM 54): `EXPO_PUBLIC_SENSORES=tensiometro_puente` (combinable con coma),
+`EXPO_PUBLIC_PUENTE_TENSIOMETRO_URL` y `_KEY`. Al tocar **Medir**, la app espera hasta ~2 minutos a que la persona pulse Start en el
+brazalete. Solo se usan la sistólica y la diastólica. También admite ingresar los valores a mano.
+
 ### Báscula real
 
 Igual que el oxímetro, vía `puente-bascula/` (puerto 8766): `EXPO_PUBLIC_SENSORES=oximetro_puente,bascula_puente`, con

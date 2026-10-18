@@ -61,7 +61,7 @@ const CAMPOS: Record<TipoSensor, Campo[]> = {
 
 // Sensores cuyos valores también pueden registrarse a mano (se leen de la pantalla del dispositivo). De la balanza solo el peso:
 // IMC, grasa y masa muscular necesitan otros instrumentos.
-const MANUALES: readonly TipoSensor[] = ['oximetro', 'oximetro_recuperacion', 'balanza'];
+const MANUALES: readonly TipoSensor[] = ['tensiometro', 'oximetro', 'oximetro_recuperacion', 'balanza'];
 const camposManuales = (tipo: TipoSensor): Campo[] =>
   tipo === 'balanza' ? [{ clave: 'peso', etiqueta: 'PESO', unidad: 'kg', decimal: true }] : CAMPOS[tipo];
 export const ID_DISPOSITIVO_MANUAL = 'manual';
