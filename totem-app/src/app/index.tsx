@@ -7,7 +7,7 @@ import {
 } from '../services/api';
 import PasoMediciones from '../components/paso-mediciones';
 import {
-  crearSensores, ETIQUETA_SENSOR, TIPOS_SENSOR, type ErrorMedicion, type Lectura, type TipoSensor, type ValoresMedidos,
+  calcularIMC, crearSensores, ETIQUETA_SENSOR, TIPOS_SENSOR, type ErrorMedicion, type Lectura, type TipoSensor, type ValoresMedidos,
 } from '../sensores';
 import { isoADisplay, parseFechaNacimiento, telefonoValido } from '../utils/fecha';
 import { matriculaValida, MENSAJE_MATRICULA, normalizarMatricula } from '../utils/matricula';
@@ -47,7 +47,11 @@ export default function App() {
   const [lecturas, setLecturas] = useState<Partial<Record<TipoSensor, Lectura>>>({});
   const [erroresMedicion, setErroresMedicion] = useState<ErrorMedicion[]>([]);
   // Valores que entregaron los sensores (solo lo que se midió: lo demás se informa como dato faltante)
-  const mediciones: ValoresMedidos = Object.assign({}, ...Object.values(lecturas).map((l) => l.valores));
+  const [estaturaCm, setEstaturaCm] = useState<number | null>(null);   // escrita a mano; con el peso de la báscula da el IMC
+  const valoresSensores: ValoresMedidos = Object.assign({}, ...Object.values(lecturas).map((l) => l.valores));
+  const imcCalculado = estaturaCm !== null && valoresSensores.peso ? calcularIMC(valoresSensores.peso, estaturaCm) : null;
+  // El IMC calculado con la estatura manual reemplaza al que traiga un sensor.
+  const mediciones: ValoresMedidos = imcCalculado && 'imc' in imcCalculado ? { ...valoresSensores, imc: imcCalculado.imc } : valoresSensores;
 
   // --- ESTADO PASO 3 ---
   const [objetivo, setObjetivo] = useState('Fuerza');
@@ -79,6 +83,7 @@ export default function App() {
     setConsentimiento(false);
     setInicioEvaluacion(null);
     setLecturas({});
+    setEstaturaCm(null);
     setErroresMedicion([]);
     setDiasSemana(null);
     setLesionesPrevias('');
@@ -211,11 +216,13 @@ export default function App() {
       return;
     }
     if (pasoActual === 2) {
-      const faltan = TIPOS_SENSOR.filter((t) => !lecturas[t]);
+      const faltan = TIPOS_SENSOR.filter((t) => !lecturas[t]).map((t) => ETIQUETA_SENSOR[t]);
+      // Con una báscula que solo entrega el peso, sin la estatura no hay IMC.
+      if (lecturas.balanza && mediciones.imc === undefined) faltan.push('Estatura (para el IMC)');
       if (faltan.length > 0) {
         Alert.alert(
           'Faltan mediciones',
-          `Aún no se midió: ${faltan.map((t) => ETIQUETA_SENSOR[t]).join(', ')}. Si continúas, la evaluación quedará con menos datos y la revisará el encargado.`,
+          `Aún no se midió: ${faltan.join(', ')}. Si continúas, la evaluación quedará con menos datos y la revisará el encargado.`,
           [
             { text: 'Volver a medir', style: 'cancel' },
             { text: 'Continuar sin ellas', onPress: () => setPasoActual(3) },
@@ -353,6 +360,8 @@ export default function App() {
         lecturas={lecturas}
         onLectura={(lectura) => setLecturas((previas) => ({ ...previas, [lectura.sensor]: lectura }))}
         onError={(error) => setErroresMedicion((previos) => [...previos, error].slice(-50))}
+        estaturaCm={estaturaCm}
+        onEstatura={setEstaturaCm}
       />
     </View>
   );

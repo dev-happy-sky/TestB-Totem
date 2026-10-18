@@ -3,7 +3,7 @@ import { Alert, type AlertButton } from 'react-native';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
 
 import App from '../app/index';
-import { crearSensores, crearSensoresSimulados, SensorOximetroPuente, type OpcionesSimulador } from '../sensores';
+import { crearSensores, crearSensoresSimulados, SensorOximetroPuente, type OpcionesSimulador, type Sensor } from '../sensores';
 
 jest.mock('@react-native-community/slider', () => 'Slider');
 // Los sensores reales (Bluetooth) no existen todavía: las pruebas usan el simulador, sin latencia y con valores fijos.
@@ -1049,5 +1049,149 @@ describe('oxímetro real a través del puente Bluetooth', () => {
     // Assert
     expect(await screen.findByText(/Sensor desconectado/)).toBeTruthy();
     expect(screen.getByText('Reintentar conexión')).toBeTruthy();
+  });
+});
+
+describe('estatura manual e IMC', () => {
+  const conEnvio = () => mockApi({ ...registrado(), 'POST /api/evaluaciones': { body: { status: 'success' } } });
+
+  // Una báscula real que solo entrega el peso (sin IMC, grasa ni masa muscular).
+  const usarBasculaSoloPeso = () => {
+    const sensores = usarSensores();
+    const simulada = sensores.balanza;
+    sensores.balanza = {
+      tipo: 'balanza', disponible: simulada.disponible.bind(simulada),
+      medir: async () => ({
+        sensor: 'balanza', valores: { peso: '53.7' }, dispositivo: { id: 'E0:D3:8E:62:51:3D', calibracion: 'desconocida' },
+        capturadoEn: new Date().toISOString(),
+      }),
+    } as Sensor;
+  };
+
+  const guardarEstatura = async (texto: string) => {
+    await fireEvent.changeText(screen.getByLabelText('Estatura manual'), texto);
+    await fireEvent.press(screen.getByLabelText('Guardar estatura'));
+  };
+
+  const avanzarYEnviar = async () => {
+    await screen.findByText('PASO 3 - TU OBJETIVO');
+    await fireEvent.press(screen.getByLabelText('3 días a la semana'));
+    await fireEvent.press(screen.getByText('Continuar →'));
+    await fireEvent.press(screen.getByText('Continuar →'));
+    await fireEvent.press(screen.getByText('Registrar mi ingreso'));
+    await waitFor(() => expect(llamadas('POST /api/evaluaciones')).toHaveLength(1));
+    return JSON.parse(llamadas('POST /api/evaluaciones')[0][1].body);
+  };
+
+  test('el paso de mediciones ofrece la tarjeta de estatura', async () => {
+    // Arrange / Act
+    mockApi(registrado());
+    await llegarAlPaso2();
+
+    // Assert
+    expect(screen.getByLabelText('Estatura e IMC')).toBeTruthy();
+  });
+
+  test('la báscula solo con peso más la estatura escrita a mano envían el IMC calculado', async () => {
+    // Arrange
+    usarBasculaSoloPeso();
+    conEnvio();
+    await llegarAlPaso2();
+    await medirTodo();
+    await guardarEstatura('172');
+
+    // Act
+    await fireEvent.press(screen.getByText('Continuar →'));
+    const cuerpo = await avanzarYEnviar();
+
+    // Assert: 53,7 kg / 1,72 m² = 18,2
+    expect(cuerpo.mediciones).toMatchObject({ peso: '53.7', imc: '18.2' });
+    expect(alerta).not.toHaveBeenCalledWith('Faltan mediciones', expect.anything(), expect.anything());
+  });
+
+  test('el IMC calculado con la estatura reemplaza al que traiga un sensor', async () => {
+    // Arrange: el simulador entrega peso 85,0 e IMC 25,3
+    usarSensores();
+    conEnvio();
+    await llegarAlPaso2();
+    await medirTodo();
+    await guardarEstatura('180');
+
+    // Act
+    await fireEvent.press(screen.getByText('Continuar →'));
+    const cuerpo = await avanzarYEnviar();
+
+    // Assert: 85,0 / 1,80² = 26,2
+    expect(cuerpo.mediciones).toMatchObject({ peso: '85.0', imc: '26.2' });
+  });
+
+  test('sin estatura el IMC del sensor simulado no se toca ni se pregunta por ella', async () => {
+    // Arrange
+    usarSensores();
+    conEnvio();
+    await llegarAlPaso2();
+    await medirTodo();
+
+    // Act
+    await fireEvent.press(screen.getByText('Continuar →'));
+    const cuerpo = await avanzarYEnviar();
+
+    // Assert
+    expect(cuerpo.mediciones.imc).toBe('25.3');
+    expect(alerta).not.toHaveBeenCalledWith('Faltan mediciones', expect.anything(), expect.anything());
+  });
+
+  test('con la báscula de solo peso y sin estatura avisa que falta para el IMC y envía sin él', async () => {
+    // Arrange
+    usarBasculaSoloPeso();
+    conEnvio();
+    await llegarAlPaso2();
+    await medirTodo();
+
+    // Act
+    await fireEvent.press(screen.getByText('Continuar →'));
+
+    // Assert
+    const [, mensaje] = alerta.mock.calls.find(([t]) => t === 'Faltan mediciones') as [string, string];
+    expect(mensaje).toContain('Estatura (para el IMC)');
+    await botonDeAlerta('Faltan mediciones', 'Continuar sin ellas').onPress?.();
+    const cuerpo = await avanzarYEnviar();
+    expect(cuerpo.mediciones.peso).toBe('53.7');
+    expect(cuerpo.mediciones.imc).toBeUndefined();
+  });
+
+  test('la estatura no se envía como un dato más: solo viaja el IMC', async () => {
+    // Arrange
+    usarBasculaSoloPeso();
+    conEnvio();
+    await llegarAlPaso2();
+    await medirTodo();
+    await guardarEstatura('172');
+
+    // Act
+    await fireEvent.press(screen.getByText('Continuar →'));
+    const cuerpo = await avanzarYEnviar();
+
+    // Assert
+    expect(JSON.stringify(cuerpo)).not.toMatch(/estatura|altura|172/i);
+  });
+
+  test('si se cambia el peso después, el IMC se recalcula con la misma estatura', async () => {
+    // Arrange
+    usarBasculaSoloPeso();
+    conEnvio();
+    await llegarAlPaso2();
+    await medirTodo();
+    await guardarEstatura('172');
+    expect(screen.getByText(/^18\.2 /)).toBeTruthy();
+
+    // Act: otra medición de peso
+    (crearSensores as jest.Mock).mock.results.at(-1)!.value.balanza.medir = async () => ({
+      sensor: 'balanza', valores: { peso: '70.0' }, dispositivo: { id: 'E0:D3', calibracion: 'desconocida' }, capturadoEn: new Date().toISOString(),
+    });
+    await medir('Balanza');
+
+    // Assert: 70,0 / 1,72² = 23,7
+    expect(await screen.findByText(/^23\.7 /)).toBeTruthy();
   });
 });
