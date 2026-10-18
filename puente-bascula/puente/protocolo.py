@@ -4,7 +4,7 @@ Formato deducido con capturas reales (peso en pantalla 53,4 kg ↔ `14 DC`). El 
 bytes: el bajo es fijo (0xC0) y el alto es un contador que cambia en cada ráfaga. El dato que sigue mide 13 bytes:
 
     bytes 0-1   peso en centésimas de kg, big-endian (0x14DC = 5340 → 53,40 kg); 0 si no hay nadie encima
-    bytes 2-3   0x1388 siempre (5000): no se usa
+    bytes 2-3   0x1388 (5000) con carga y 0x0000 en vacío: no se usa
     bytes 4-5   0x0000: no se usa
     byte 6      0x25 con carga, 0x24 en vacío
     bytes 7-12  dirección MAC de la báscula

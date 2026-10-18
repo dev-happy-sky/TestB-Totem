@@ -47,6 +47,13 @@ class Captura:
         """(instante, muestra) de lo último que llegó, sea válido o no; None si aún no llegó nada."""
         return self._muestras[-1] if self._muestras else None
 
+    def ultima_valida(self) -> Optional[tuple]:
+        """(instante, muestra) del último anuncio CON peso, ignorando los vacíos que se intercalan; None si no hay."""
+        for instante, muestra in reversed(self._muestras):
+            if muestra.valida:
+                return instante, muestra
+        return None
+
     def desde(self, instante: float) -> list:
         return [(t, m) for t, m in self._muestras if t >= instante]
 

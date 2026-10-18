@@ -114,6 +114,34 @@ async def test_lectura_sin_carga_no_entrega_peso():
     assert r.json() == {"escuchando": True, "valida": False, "peso_kg": None, "motivo": "sin_carga"}
 
 
+async def test_lectura_ignora_los_anuncios_vacios_intercalados_mientras_hay_alguien_encima():
+    # Arrange: la báscula alterna anuncios con peso y anuncios vacíos aunque la persona siga encima
+    escucha = EscuchaFalsa()
+    escucha.captura.agregar(peso(53.4))
+    escucha._reloj.t += 3
+    escucha.captura.agregar(VACIA)
+
+    # Act
+    r = await _lectura(escucha)
+
+    # Assert
+    assert r.json() == {"escuchando": True, "valida": True, "peso_kg": 53.4, "motivo": None}
+
+
+async def test_lectura_pasa_a_sin_carga_si_ya_no_llegan_pesos_nuevos():
+    # Arrange: la persona se bajó: solo siguen llegando anuncios vacíos
+    escucha = EscuchaFalsa()
+    escucha.captura.agregar(peso(53.4))
+    escucha._reloj.t += 16
+    escucha.captura.agregar(VACIA)
+
+    # Act
+    r = await _lectura(escucha)
+
+    # Assert
+    assert r.json()["valida"] is False and r.json()["motivo"] == "sin_carga" and r.json()["peso_kg"] is None
+
+
 async def test_lectura_vieja_o_inexistente_es_sin_senal():
     # Arrange
     vieja = EscuchaFalsa()

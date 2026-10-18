@@ -15,8 +15,10 @@ from fastapi.responses import JSONResponse
 
 from puente.captura import ErrorMedicion, TIMEOUT_POR_DEFECTO_S, esperar_medicion
 
-# La báscula anuncia en ráfagas separadas por varios segundos: un valor más viejo que esto ya no es "en vivo".
+# La báscula anuncia en ráfagas separadas por varios segundos, e intercala anuncios "vacíos" (00 00) aunque haya alguien
+# encima: un peso sigue siendo "en vivo" este tiempo, y solo si no llega ninguno nuevo se da por vacía.
 VIGENCIA_EN_VIVO_S = 20.0
+VIGENCIA_PESO_S = 15.0
 
 ESTADO_HTTP = {"desconectado": 503, "timeout": 504, "lectura_invalida": 422, "movimiento": 422, "error": 500}
 
@@ -59,10 +61,10 @@ def crear_app(escucha, token: Optional[str] = None, origenes: Optional[list] = N
         ultima = escucha.captura.ultima()
         if ultima is None or reloj() - ultima[0] > VIGENCIA_EN_VIVO_S:
             return {**vacia, "escuchando": True, "motivo": "sin_senal"}
-        _, muestra = ultima
-        if not muestra.valida:
+        con_peso = escucha.captura.ultima_valida()
+        if con_peso is None or reloj() - con_peso[0] > VIGENCIA_PESO_S:
             return {**vacia, "escuchando": True, "motivo": "sin_carga"}
-        return {"escuchando": True, "valida": True, "peso_kg": muestra.peso_kg, "motivo": None}
+        return {"escuchando": True, "valida": True, "peso_kg": con_peso[1].peso_kg, "motivo": None}
 
     @app.post("/medir", dependencies=[Depends(verificar)])
     async def medir():

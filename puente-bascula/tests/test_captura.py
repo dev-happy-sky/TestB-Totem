@@ -148,3 +148,30 @@ async def test_si_no_llega_nada_en_el_tiempo_maximo_falla_con_timeout():
 
     # Assert
     assert error.value.codigo == "timeout"
+
+
+# ------------------------------------------------------------------------------------------ ultima_valida
+
+def test_ultima_valida_salta_los_anuncios_vacios_posteriores():
+    # Arrange
+    reloj = Reloj()
+    captura = Captura(reloj)
+    captura.agregar(con_peso(53.4))
+    reloj.t = 2.0
+    captura.agregar(VACIA)
+
+    # Act
+    instante, muestra = captura.ultima_valida()
+
+    # Assert
+    assert instante == 0.0 and muestra.peso_kg == 53.4 and captura.ultima()[1] is VACIA
+
+
+def test_ultima_valida_es_none_si_solo_hay_anuncios_vacios_o_nada():
+    # Arrange
+    captura = Captura(Reloj())
+
+    # Act / Assert
+    assert captura.ultima_valida() is None
+    captura.agregar(VACIA)
+    assert captura.ultima_valida() is None

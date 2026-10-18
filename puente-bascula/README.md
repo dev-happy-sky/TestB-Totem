@@ -61,17 +61,29 @@ Capturas reales; el peso en pantalla coincidía (53,4 kg ↔ `14 DC`). Detalle e
 
 ```
 dato (13 bytes):  14 DC | 13 88 | 00 00 | 25 | E0 D3 8E 62 51 3D
-                  peso    fijo    fijo    estado  MAC
+                  peso    ¿?      fijo    estado  MAC
 ```
 
 - Peso: 2 bytes big-endian en centésimas de kg (`0x14DC` = 5340 = 53,40 kg). Vacía: `00 00`.
-- Estado: `25` con carga, `24` en vacío. Los 2 bytes `13 88` no cambian con el peso y no se usan.
+- Estado: `25` con carga, `24` en vacío. Los 2 bytes `13 88` valen `00 00` en vacío y `13 88` con carga, sin relación con el peso;
+  no se usan (su significado es desconocido).
 - Lo que bleak llama "id de fabricante" mezcla un byte fijo (`C0`) y un contador que cambia por ráfaga.
 - Los anuncios llegan en **ráfagas de 1-2 paquetes cada varios segundos**, por eso una medición pide solo 2 muestras
   consecutivas dentro de ±0,1 kg.
 
 **Sin verificar:** pesos por encima de ~55 kg, báscula configurada en libras o stones, y si `13 88` cambia con otra persona o
 con impedancia. Con la tuya, la báscula solo entrega el **peso**: IMC, grasa y masa muscular no vienen en el anuncio.
+
+## Descubrir qué más trae el anuncio
+
+```powershell
+$env:BASCULA_ID = "E0:D3:8E:62:51:3D"
+python -m puente.capturar 30
+```
+
+Imprime cada anuncio en bruto, el peso deducido y, al final, qué posiciones de bytes cambiaron. Súbete descalzo y espera a que la
+pantalla termine de medir. Con tu báscula solo cambian el contador, el peso y el estado (vacía/con carga): **el anuncio no trae
+grasa ni impedancia**, y la báscula tampoco acepta conexiones (`BleakDeviceNotFoundError`), así que no hay otra vía. No guarda nada en disco.
 
 ## Conectarlo a la app
 
