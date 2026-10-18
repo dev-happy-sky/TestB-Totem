@@ -236,14 +236,14 @@ describe('registro manual del oxímetro', () => {
   const abrir = async (nombre = 'Oxímetro') => fireEvent.press(screen.getByLabelText(`Ingresar manualmente ${nombre}`));
   const escribir = async (etiqueta: string, texto: string) => fireEvent.changeText(screen.getByLabelText(etiqueta), texto);
 
-  test('solo los oxímetros y la balanza ofrecen ingresar los valores a mano', async () => {
+  test('el tensiómetro, los oxímetros y la balanza ofrecen ingresar los valores a mano', async () => {
     // Arrange / Act
     await montar();
 
     // Assert
     expect(screen.getByLabelText('Ingresar manualmente Oxímetro')).toBeTruthy();
     expect(screen.getByLabelText('Ingresar manualmente Oxímetro (FC de recuperación)')).toBeTruthy();
-    expect(screen.queryByLabelText('Ingresar manualmente Tensiómetro')).toBeNull();
+    expect(screen.getByLabelText('Ingresar manualmente Tensiómetro')).toBeTruthy();
     expect(screen.getByLabelText('Ingresar manualmente Balanza')).toBeTruthy();
     expect(screen.queryByLabelText('Ingresar manualmente Prueba de esfuerzo')).toBeNull();
   });
@@ -498,4 +498,55 @@ describe('báscula: lectura en vivo y peso manual', () => {
       expect((await screen.findByRole('alert')).props.children).toContain(mensaje);
       expect(alLeer).not.toHaveBeenCalled();
     });
+});
+
+describe('tensiómetro: presión manual', () => {
+  const abrir = async () => {
+    const montado = await montar();
+    await fireEvent.press(screen.getByLabelText('Ingresar manualmente Tensiómetro'));
+    return montado;
+  };
+
+  test('registra sistólica y diastólica escritas a mano como dispositivo manual', async () => {
+    // Arrange
+    const { alLeer } = await abrir();
+
+    // Act
+    await fireEvent.changeText(screen.getByLabelText('SISTÓLICA manual'), '118');
+    await fireEvent.changeText(screen.getByLabelText('DIASTÓLICA manual'), '78');
+    await fireEvent.press(screen.getByLabelText('Registrar valores de Tensiómetro'));
+
+    // Assert
+    await screen.findByText('✓ Medición terminada correctamente');
+    expect(alLeer.mock.calls[0][0]).toMatchObject({
+      sensor: 'tensiometro', valores: { presionSys: 118, presionDia: 78 }, dispositivo: { id: 'manual', calibracion: 'desconocida' },
+    });
+  });
+
+  test('una sistólica menor o igual que la diastólica se rechaza', async () => {
+    // Arrange
+    const { alLeer } = await abrir();
+
+    // Act
+    await fireEvent.changeText(screen.getByLabelText('SISTÓLICA manual'), '80');
+    await fireEvent.changeText(screen.getByLabelText('DIASTÓLICA manual'), '90');
+    await fireEvent.press(screen.getByLabelText('Registrar valores de Tensiómetro'));
+
+    // Assert
+    expect((await screen.findByRole('alert')).props.children).toContain('mayor que la diastólica');
+    expect(alLeer).not.toHaveBeenCalled();
+  });
+
+  test('exige números enteros', async () => {
+    // Arrange
+    await abrir();
+
+    // Act
+    await fireEvent.changeText(screen.getByLabelText('SISTÓLICA manual'), '118,5');
+    await fireEvent.changeText(screen.getByLabelText('DIASTÓLICA manual'), '78');
+    await fireEvent.press(screen.getByLabelText('Registrar valores de Tensiómetro'));
+
+    // Assert
+    expect((await screen.findByRole('alert')).props.children).toContain('número entero');
+  });
 });
