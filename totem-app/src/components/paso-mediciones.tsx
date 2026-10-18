@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
+import TarjetaEstatura from './tarjeta-estatura';
 import {
   ErrorSensor, ETIQUETA_SENSOR, INSTRUCCIONES, TIPOS_SENSOR, validarLectura,
   type CodigoError, type ErrorMedicion, type Lectura, type LecturaEnVivo, type Sensores, type TipoSensor, type ValoresMedidos,
@@ -19,6 +20,9 @@ type Props = {
   onError: (error: ErrorMedicion) => void;
   /** Cada cuánto se consulta la lectura en vivo de los sensores que la ofrecen. */
   intervaloEnVivoMs?: number;
+  /** Si se pasa `onEstatura`, se muestra la tarjeta para escribir la estatura a mano y calcular el IMC. */
+  estaturaCm?: number | null;
+  onEstatura?: (cm: number | null) => void;
 };
 
 const COLOR_NORMAL = '#0f172a';
@@ -81,7 +85,7 @@ const textoEnVivo = (tipo: TipoSensor, vivo: LecturaEnVivo): string => {
   return `${tipo === 'oximetro' ? `SpO₂ ${vivo.spo2} %  ·  ` : ''}FC ${vivo.fc} lpm`;
 };
 
-export default function PasoMediciones({ sensores, lecturas, onLectura, onError, intervaloEnVivoMs = 1000 }: Props) {
+export default function PasoMediciones({ sensores, lecturas, onLectura, onError, intervaloEnVivoMs = 1000, estaturaCm = null, onEstatura }: Props) {
   const [estados, setEstados] = useState<Partial<Record<TipoSensor, Estado>>>({});
   const [enVivo, setEnVivo] = useState<Partial<Record<TipoSensor, LecturaEnVivo>>>({});
   const [manuales, setManuales] = useState<Partial<Record<TipoSensor, Manual>>>({});
@@ -273,6 +277,7 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
           </View>
         );
       })}
+      {onEstatura && <TarjetaEstatura estaturaCm={estaturaCm} peso={lecturas.balanza?.valores.peso} onEstatura={onEstatura} />}
     </View>
   );
 }

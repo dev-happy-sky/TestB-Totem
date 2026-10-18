@@ -6,6 +6,7 @@ import type { Sensores } from './tipos';
 
 export * from './tipos';
 export * from './rangos';
+export * from './estatura';
 export { SensorOximetroPuente, type ConfiguracionPuente } from './puente';
 export { SensorBasculaPuente } from './puente-bascula';
 export { SensorTensiometroPuente } from './puente-tensiometro';

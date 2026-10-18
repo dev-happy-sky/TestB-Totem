@@ -550,3 +550,118 @@ describe('tensiómetro: presión manual', () => {
     expect((await screen.findByRole('alert')).props.children).toContain('número entero');
   });
 });
+
+describe('estatura manual e IMC', () => {
+  const LECTURA_PESO: Lectura = {
+    sensor: 'balanza', valores: { peso: '53.7' }, dispositivo: { id: 'E0:D3', calibracion: 'desconocida' }, capturadoEn: '2026-10-17T22:30:00Z',
+  };
+
+  const montarEstatura = async (opciones: { peso?: boolean; estatura?: number | null } = {}) => {
+    const alCambiar = jest.fn();
+    const sensores = crearSensoresSimulados({ latenciaMs: 0, azar: () => 0.5 });
+    const lecturas: Partial<Record<TipoSensor, Lectura>> = opciones.peso ? { balanza: LECTURA_PESO } : {};
+    await render(
+      <PasoMediciones sensores={sensores} lecturas={lecturas} onLectura={jest.fn()} onError={jest.fn()}
+                      estaturaCm={opciones.estatura ?? null} onEstatura={alCambiar} />,
+    );
+    return { alCambiar };
+  };
+
+  test('sin onEstatura la tarjeta no aparece', async () => {
+    // Arrange / Act
+    await montar();
+
+    // Assert
+    expect(screen.queryByLabelText('Estatura e IMC')).toBeNull();
+  });
+
+  test('con onEstatura aparece la tarjeta, sin valores inventados', async () => {
+    // Arrange / Act
+    await montarEstatura();
+
+    // Assert
+    expect(screen.getByLabelText('Estatura e IMC')).toBeTruthy();
+    expect(screen.getByLabelText('Estatura manual')).toBeTruthy();
+    expect(screen.getAllByText('--', { exact: false }).length).toBeGreaterThanOrEqual(2);
+  });
+
+  test('guarda la estatura escrita en centímetros (acepta coma)', async () => {
+    // Arrange
+    const { alCambiar } = await montarEstatura();
+
+    // Act
+    await fireEvent.changeText(screen.getByLabelText('Estatura manual'), '172,5');
+    await fireEvent.press(screen.getByLabelText('Guardar estatura'));
+
+    // Assert
+    expect(alCambiar).toHaveBeenCalledWith(172.5);
+  });
+
+  test.each([['abc', 'centímetros'], ['1,72', 'no en metros'], ['300', 'entre 100 y 250']])(
+    'una estatura inválida (%j) muestra el motivo y no se guarda', async (texto, motivo) => {
+      // Arrange
+      const { alCambiar } = await montarEstatura();
+
+      // Act
+      await fireEvent.changeText(screen.getByLabelText('Estatura manual'), texto);
+      await fireEvent.press(screen.getByLabelText('Guardar estatura'));
+
+      // Assert
+      expect((await screen.findByRole('alert')).props.children).toContain(motivo);
+      expect(alCambiar).not.toHaveBeenCalled();
+    });
+
+  test('con estatura y peso muestra el IMC calculado', async () => {
+    // Arrange / Act
+    await montarEstatura({ peso: true, estatura: 172 });
+
+    // Assert
+    expect(screen.getByText(/^172 /)).toBeTruthy();
+    expect(screen.getByText(/^18\.2 /)).toBeTruthy();
+    expect(screen.getByLabelText('Cambiar estatura')).toBeTruthy();
+    expect(screen.queryByLabelText('Estatura manual')).toBeNull();
+  });
+
+  test('un IMC fuera del rango normal se resalta en rojo', async () => {
+    // Arrange / Act: 53,7 kg a 172 cm = 18,2 (< 18,5)
+    await montarEstatura({ peso: true, estatura: 172 });
+
+    // Assert
+    expect(colorDe(/^18\.2 /)).toBe('#ef4444');
+  });
+
+  test('un IMC normal no se resalta', async () => {
+    // Arrange / Act: 53,7 kg a 160 cm = 21,0
+    await montarEstatura({ peso: true, estatura: 160 });
+
+    // Assert
+    expect(colorDe(/^21\.0 /)).toBe('#0f172a');
+  });
+
+  test('con estatura pero sin peso avisa que falta pesarse', async () => {
+    // Arrange / Act
+    await montarEstatura({ estatura: 172 });
+
+    // Assert
+    expect(screen.getByText(/Falta el peso/)).toBeTruthy();
+  });
+
+  test('un IMC imposible muestra el error', async () => {
+    // Arrange / Act: 53,7 kg a 250 cm = 8,6
+    await montarEstatura({ peso: true, estatura: 250 });
+
+    // Assert
+    expect((await screen.findByRole('alert')).props.children).toContain('fuera de lo posible');
+  });
+
+  test('cambiar la estatura la borra para volver a escribirla', async () => {
+    // Arrange
+    const { alCambiar } = await montarEstatura({ peso: true, estatura: 172 });
+
+    // Act
+    await fireEvent.press(screen.getByLabelText('Cambiar estatura'));
+
+    // Assert
+    expect(alCambiar).toHaveBeenCalledWith(null);
+  });
+});

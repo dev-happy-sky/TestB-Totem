@@ -1,0 +1,53 @@
+# Quiosco del tótem (Windows)
+
+Arranca todo lo que necesita la pantalla del tótem **en un solo paso**: los puentes Bluetooth de los sensores, la app (compilada para
+web) y el navegador a pantalla completa.
+
+```
+sensores ──BLE──▶ puentes (localhost) ──HTTP──▶ app del tótem (navegador en quiosco) ──HTTPS──▶ backend (Render) ──▶ dashboard (Vercel)
+```
+
+Va todo en el mismo equipo porque un navegador solo puede llamar a los puentes por `localhost` (una página web no puede llamar a un
+puente `http` de otra máquina). La app se sirve en `http://localhost:8081` y los puentes solo aceptan llamadas de ese origen.
+
+## Una sola vez
+
+1. En `totem-app/.env` define el backend y los sensores reales (ver `totem-app/.env.example`):
+   ```
+   EXPO_PUBLIC_API_URL=https://<tu-backend>.onrender.com
+   EXPO_PUBLIC_SENSORES=oximetro_puente,bascula_puente
+   EXPO_PUBLIC_PUENTE_OXIMETRO_URL=http://localhost:8765
+   EXPO_PUBLIC_PUENTE_BASCULA_URL=http://localhost:8766
+   EXPO_PUBLIC_TOTEM_KEY=<igual a TOTEM_API_KEY del backend, si activaste la seguridad>
+   ```
+   Deja `localhost`, no la IP del equipo. No pongas `PUENTE_TOKEN` en los puentes ni `*_KEY` en la app: no hacen falta con `localhost`
+   (y una clave dentro de una app web es visible para quien la abra).
+2. Cada puente necesita su `puente.env` (copia `puente.env.example` en `puente-oximetro/`, `puente-bascula/`...).
+3. Instala las dependencias de los puentes (`pip install -r requirements.txt` en cada carpeta) y de la app (`npm install` en `totem-app/`).
+4. Compila la app: `.\construir_app.ps1` (40 s aprox.). **Hay que repetirlo cada vez que cambie el código o el `.env`**, porque las variables
+   `EXPO_PUBLIC_*` se incrustan al compilar.
+
+## Uso
+
+```powershell
+.\iniciar_quiosco.ps1                 # puentes + app + navegador a pantalla completa
+.\iniciar_quiosco.ps1 -SinNavegador   # solo los servicios (para probar)
+.\iniciar_quiosco.ps1 -Verificar      # muestra qué haría, sin arrancar nada
+.\detener_quiosco.ps1                 # detiene puentes y servidor (el navegador se cierra con Alt+F4)
+```
+
+Para que arranque solo al encender el equipo: `.\instalar_inicio_automatico.ps1` (tarea `TotemQuiosco`; quitar con
+`.\quitar_inicio_automatico.ps1`). Corre en la sesión del usuario, así que el equipo debe iniciar sesión solo. Si PowerShell bloquea
+scripts: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+
+Configuración opcional en `quiosco.env` (copia `quiosco.env.example`): `PUERTO_APP` (8081), `PUENTES` (`oximetro,bascula`; también
+`tensiometro`) y `NAVEGADOR` (ruta de Chrome o Edge si no se detecta). Un puente sin `puente.env` se omite con un aviso.
+
+## Cosas a saber
+
+- Se usa Chrome o Edge en modo `--kiosk` con un perfil propio (`%LOCALAPPDATA%\TotemQuiosco`), sin barras ni pestañas. La app ya no tiene
+  la barra de navegación de la plantilla de Expo.
+- La app necesita internet para hablar con el backend; los puentes funcionan sin él. Render gratuito tarda ~30 s en despertar tras un rato inactivo.
+- Si cambias de PC, hay que repetir los pasos de «Una sola vez» (los `.env` y `puente.env` no se suben a git).
+- El dashboard de Vercel no se toca: recibe las evaluaciones del backend. Su `NEXT_PUBLIC_BACKEND_URL` debe apuntar al mismo backend que
+  `EXPO_PUBLIC_API_URL`.
