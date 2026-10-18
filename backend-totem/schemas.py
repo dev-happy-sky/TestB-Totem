@@ -33,10 +33,25 @@ class Mediciones(BaseModel):
     fcRecup: Optional[int] = None
     peso: Optional[str] = None
     imc: Optional[str] = None
+    estatura: Optional[str] = None   # cm, escrita a mano en el tótem
     grasa: Optional[str] = None
     vo2Max: Optional[str] = None
     masaMuscular: Optional[str] = None
     spo2: Optional[int] = None   # saturación de oxígeno (%), del oxímetro
+
+
+    @field_validator("estatura")
+    @classmethod
+    def _estatura_plausible(cls, valor):
+        if valor is None or not str(valor).strip():
+            return None
+        try:
+            cm = float(valor)
+        except ValueError:
+            raise ValueError("La estatura debe ser un número en centímetros")
+        if not 100 <= cm <= 250:
+            raise ValueError("La estatura debe estar entre 100 y 250 cm")
+        return str(valor).strip()
 
 
 class Entrenamiento(BaseModel):

@@ -13,7 +13,7 @@ const evaluacion = (n, extra = {}) => ({
   entrenamiento: { objetivo: 'Fuerza', experiencia: 'Intermedio', diasSemana: 3, duracion: 60 },
   mediciones: {
     presionSys: 118, presionDia: 78, fcReposo: 70, fcRecup: 100, peso: '70.0', imc: '24.0', grasa: '20.0', vo2Max: '40.0',
-    masaMuscular: '30.5', capturadoEn: '2026-10-01T10:00:00', validado: false,
+    masaMuscular: '30.5', estatura: '172.0', capturadoEn: '2026-10-01T10:00:00', validado: false,
   },
   salud: { sintomas: [], condiciones: [], lesionesPrevias: null, antecedentesCronicos: false },
   ...extra,
@@ -369,7 +369,7 @@ describe('campos del modelo de datos', () => {
     await screen.findAllByText('Socio 1');
 
     // Assert
-    for (const [etiqueta, valor] of [['PESO', '70.0'], ['MASA MUSCULAR', '30.5'], ['GRASA', '20.0'], ['IMC', '24.0'], ['VO₂ MÁX', '40.0']]) {
+    for (const [etiqueta, valor] of [['PESO', '70.0'], ['ESTATURA', '172.0'], ['MASA MUSCULAR', '30.5'], ['GRASA', '20.0'], ['IMC', '24.0'], ['VO₂ MÁX', '40.0']]) {
       expect(screen.getByText(etiqueta).nextSibling).toHaveTextContent(valor);
     }
   });
@@ -386,6 +386,46 @@ describe('campos del modelo de datos', () => {
     // Assert
     expect(screen.getByText('MASA MUSCULAR').nextSibling).toHaveTextContent('--');
     expect(screen.getByText('PESO').nextSibling).toHaveTextContent('--');
+  });
+
+  test('la estatura se muestra en centímetros junto al peso y el IMC', async () => {
+    // Arrange
+    mockApi({ 'GET /api/evaluaciones': { body: [evaluacion(1)] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    const tarjeta = screen.getByText('ESTATURA').parentElement;
+    expect(tarjeta).toHaveTextContent('172.0');
+    expect(tarjeta).toHaveTextContent('cm');
+  });
+
+  test('una evaluación sin estatura (versión anterior de la app) la muestra como guiones', async () => {
+    // Arrange
+    const sinEstatura = evaluacion(1, { mediciones: { ...evaluacion(1).mediciones, estatura: undefined } });
+    mockApi({ 'GET /api/evaluaciones': { body: [sinEstatura] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.getByText('ESTATURA').nextSibling).toHaveTextContent('--');
+  });
+
+  test('una evaluación con estatura vacía (servidor sin ese dato) la muestra como guiones', async () => {
+    // Arrange
+    const vacia = evaluacion(1, { mediciones: { ...evaluacion(1).mediciones, estatura: '' } });
+    mockApi({ 'GET /api/evaluaciones': { body: [vacia] }, 'GET /api/socios/.*': { body: [] } });
+
+    // Act
+    render(<DashboardAptitud {...props} />);
+    await screen.findAllByText('Socio 1');
+
+    // Assert
+    expect(screen.getByText('ESTATURA').nextSibling).toHaveTextContent('--');
   });
 
   test('muestra los objetivos y las respuestas del cuestionario', async () => {

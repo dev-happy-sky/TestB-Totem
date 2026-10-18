@@ -51,7 +51,9 @@ export default function App() {
   const valoresSensores: ValoresMedidos = Object.assign({}, ...Object.values(lecturas).map((l) => l.valores));
   const imcCalculado = estaturaCm !== null && valoresSensores.peso ? calcularIMC(valoresSensores.peso, estaturaCm) : null;
   // El IMC calculado con la estatura manual reemplaza al que traiga un sensor.
-  const mediciones: ValoresMedidos = imcCalculado && 'imc' in imcCalculado ? { ...valoresSensores, imc: imcCalculado.imc } : valoresSensores;
+  const conImc: ValoresMedidos = imcCalculado && 'imc' in imcCalculado ? { ...valoresSensores, imc: imcCalculado.imc } : valoresSensores;
+  // La estatura viaja con las mediciones (cm con un decimal) para que el encargado la vea junto al peso y el IMC.
+  const mediciones: ValoresMedidos = estaturaCm !== null ? { ...conImc, estatura: estaturaCm.toFixed(1) } : conImc;
 
   // --- ESTADO PASO 3 ---
   const [objetivo, setObjetivo] = useState('Fuerza');
