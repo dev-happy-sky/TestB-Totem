@@ -1,5 +1,6 @@
 """python -m puente  (variables: TENSIOMETRO_ID, PUENTE_HOST, PUENTE_PORT, PUENTE_TOKEN, PUENTE_ORIGENES, PUENTE_TIMEOUT_S,
 PUENTE_EMPAREJAR, PUENTE_ANTIGUEDAD_MAX_MIN)"""
+import logging
 import os
 import sys
 
@@ -23,6 +24,8 @@ def main() -> int:
     if host not in ("127.0.0.1", "localhost", "::1") and not token:
         print("Error: si el puente escucha fuera de localhost, define PUENTE_TOKEN.", file=sys.stderr)
         return 1
+    # Con marcas de hora: la conexión con el tensiómetro dura un par de segundos y el log es la forma de ver en qué paso se corta.
+    logging.basicConfig(level=os.getenv("PUENTE_LOG", "WARNING").upper(), format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
     origenes = [o.strip() for o in os.getenv("PUENTE_ORIGENES", "").split(",") if o.strip()]
     lector = LectorTensiometro(
         direccion, emparejar=_verdadero(os.getenv("PUENTE_EMPAREJAR", "")),
