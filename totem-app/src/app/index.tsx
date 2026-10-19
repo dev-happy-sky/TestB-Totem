@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, SafeAreaView, Alert } from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, SafeAreaView } from 'react-native';
 import Slider from '@react-native-community/slider';
 
 import {
@@ -9,7 +9,9 @@ import PasoMediciones from '../components/paso-mediciones';
 import {
   calcularIMC, crearSensores, ETIQUETA_SENSOR, TIPOS_SENSOR, type ErrorMedicion, type Lectura, type TipoSensor, type ValoresMedidos,
 } from '../sensores';
-import { isoADisplay, parseFechaNacimiento, telefonoValido } from '../utils/fecha';
+import { formatearFechaEntrada, isoADisplay, parseFechaNacimiento, telefonoValido } from '../utils/fecha';
+import { mostrarAlerta } from '../utils/dialogo';
+import { opcionesPlan } from '../utils/planes';
 import { matriculaValida, MENSAJE_MATRICULA, normalizarMatricula } from '../utils/matricula';
 
 type Fase = 'ingreso' | 'registrado' | 'nuevo';
@@ -93,11 +95,16 @@ export default function App() {
   };
 
   const cancelarEvaluacion = () => {
-    Alert.alert('¿Cancelar la evaluación?', 'Se borrarán los datos ingresados y volverás al inicio.', [
+    mostrarAlerta('¿Cancelar la evaluación?', 'Se borrarán los datos ingresados y volverás al inicio.', [
       { text: 'Seguir evaluándome', style: 'cancel' },
       { text: 'Sí, cancelar', style: 'destructive', onPress: reiniciar },
     ]);
   };
+
+  // Mismas reglas que `datosPersonalesValidos`, pero sobre los datos que ya tiene el sistema y sin mostrar avisos.
+  const datosCompletos = (d: { nombre: string; apellido: string; fechaNacimiento: string; telefono: string; plan: string }) =>
+    d.nombre.trim().length >= 2 && d.apellido.trim().length >= 2 && d.plan.trim().length >= 2 &&
+    parseFechaNacimiento(d.fechaNacimiento) !== null && telefonoValido(d.telefono);
 
   // R.1, R.2, R.4, R.7: identifica por matrícula y muestra si ya está registrado y si tiene una evaluación vigente.
   const buscarMatricula = async () => {
@@ -124,6 +131,9 @@ export default function App() {
       setDatosServidor(datos);
       setFormData({ matricula, ...datos });
       setFase('registrado');
+      // Con los datos completos en el sistema va directo a las mediciones (con «Atrás» puede revisarlos o actualizarlos). Si falta
+      // alguno (socios antiguos sin fecha de nacimiento, por ejemplo) se queda en el formulario para completarlo.
+      if (datosCompletos(datos)) empezarEvaluacion();
     } else {
       setPrevias(null);
       setDatosServidor(null);
@@ -134,15 +144,15 @@ export default function App() {
 
   const datosPersonalesValidos = () => {
     if (formData.nombre.trim().length < 2 || formData.apellido.trim().length < 2 || formData.plan.trim().length < 2) {
-      Alert.alert('Datos incompletos', 'Completa tu nombre, tu apellido y tu plan de membresía para continuar.');
+      mostrarAlerta('Datos incompletos', 'Completa tu nombre, tu apellido y elige tu plan de membresía para continuar.');
       return false;
     }
     if (!parseFechaNacimiento(formData.fechaNacimiento)) {
-      Alert.alert('Fecha de nacimiento inválida', 'Escríbela como DD/MM/AAAA, por ejemplo 15/03/2002.');
+      mostrarAlerta('Fecha de nacimiento inválida', 'Escríbela como DD/MM/AAAA, por ejemplo 15/03/2002.');
       return false;
     }
     if (!telefonoValido(formData.telefono)) {
-      Alert.alert('Teléfono inválido', 'Usa solo números, espacios, + o guiones (mínimo 6 dígitos), o déjalo en blanco.');
+      mostrarAlerta('Teléfono inválido', 'Usa solo números, espacios, + o guiones (mínimo 6 dígitos), o déjalo en blanco.');
       return false;
     }
     return true;
@@ -166,15 +176,15 @@ export default function App() {
     if (resultado.ok) {
       empezarEvaluacion();
     } else if (resultado.code === 'posible_duplicado') {
-      Alert.alert('¿Ya estás registrado?', `${resultado.mensaje}`, [
+      mostrarAlerta('¿Ya estás registrado?', `${resultado.mensaje}`, [
         { text: 'Revisar mis datos', style: 'cancel' },
         { text: 'Soy otra persona', onPress: () => registrarNuevo(true) },
       ]);
     } else if (resultado.code === 'matricula_registrada') {
-      Alert.alert('Matrícula ya registrada', 'Busca tu matrícula nuevamente para continuar.');
+      mostrarAlerta('Matrícula ya registrada', 'Busca tu matrícula nuevamente para continuar.');
       setFase('ingreso');
     } else {
-      Alert.alert('No se pudo registrar', resultado.mensaje);
+      mostrarAlerta('No se pudo registrar', resultado.mensaje);
     }
   };
 
@@ -195,7 +205,7 @@ export default function App() {
       const resultado = await actualizarSocio(formData.matricula, cambios);
       setOcupado(false);
       if (!resultado.ok) {
-        Alert.alert('No se pudieron actualizar tus datos', resultado.mensaje);
+        mostrarAlerta('No se pudieron actualizar tus datos', resultado.mensaje);
         return;
       }
     }
@@ -205,11 +215,11 @@ export default function App() {
   const avanzar = async () => {
     if (pasoActual === 1) {
       if (fase === 'ingreso') {
-        Alert.alert('Busca tu matrícula', 'Ingresa tu matrícula y presiona "Buscar" para continuar.');
+        mostrarAlerta('Busca tu matrícula', 'Ingresa tu matrícula y presiona "Buscar" para continuar.');
         return;
       }
       if (!consentimiento) {
-        Alert.alert("Consentimiento requerido", "Para continuar debes aceptar el uso de tus datos de salud.");
+        mostrarAlerta("Consentimiento requerido", "Para continuar debes aceptar el uso de tus datos de salud.");
         return;
       }
       if (!datosPersonalesValidos()) return;
@@ -218,11 +228,15 @@ export default function App() {
       return;
     }
     if (pasoActual === 2) {
+      if (!consentimiento) {
+        mostrarAlerta("Consentimiento requerido", "Para continuar debes aceptar el uso de tus datos de salud.");
+        return;
+      }
       const faltan = TIPOS_SENSOR.filter((t) => !lecturas[t]).map((t) => ETIQUETA_SENSOR[t]);
-      // Con una báscula que solo entrega el peso, sin la estatura no hay IMC.
-      if (lecturas.balanza && mediciones.imc === undefined) faltan.push('Estatura (para el IMC)');
+      // La estatura es el primer dato (sin ella el resto está bloqueado) y con el peso da el IMC.
+      if (estaturaCm === null) faltan.unshift('Estatura (para el IMC)');
       if (faltan.length > 0) {
-        Alert.alert(
+        mostrarAlerta(
           'Faltan mediciones',
           `Aún no se midió: ${faltan.join(', ')}. Si continúas, la evaluación quedará con menos datos y la revisará el encargado.`,
           [
@@ -234,7 +248,7 @@ export default function App() {
       }
     }
     if (pasoActual === 3 && diasSemana === null) {
-      Alert.alert('Falta un dato', 'Indica cuántos días a la semana puedes entrenar.');
+      mostrarAlerta('Falta un dato', 'Indica cuántos días a la semana puedes entrenar.');
       return;
     }
     if (pasoActual < totalPasos) setPasoActual(pasoActual + 1);
@@ -244,7 +258,7 @@ export default function App() {
   // Envía la evaluación completa al backend
   const registrarIngreso = async () => {
     if (!consentimiento) {
-      Alert.alert("Consentimiento requerido", "Debes aceptar el uso de tus datos de salud para registrar tu ingreso.");
+      mostrarAlerta("Consentimiento requerido", "Debes aceptar el uso de tus datos de salud para registrar tu ingreso.");
       return;
     }
     const payload = {
@@ -270,12 +284,12 @@ export default function App() {
     setOcupado(false);
 
     if (resultado.ok) {
-      Alert.alert("¡Éxito!", "Tus datos han sido enviados al profesor.");
+      mostrarAlerta("¡Éxito!", "Tus datos han sido enviados al profesor.");
       reiniciar();
     } else if (resultado.status === 0) {
-      Alert.alert("Error de conexión", resultado.mensaje);
+      mostrarAlerta("Error de conexión", resultado.mensaje);
     } else {
-      Alert.alert("Error del servidor", `Código ${resultado.status}: ${resultado.mensaje}`);
+      mostrarAlerta("Error del servidor", `Código ${resultado.status}: ${resultado.mensaje}`);
     }
   };
 
@@ -338,33 +352,73 @@ export default function App() {
             <View style={[styles.inputGroup, { flex: 1 }]}><Text style={styles.label}>APELLIDO</Text><TextInput style={styles.input} value={formData.apellido} accessibilityLabel="Apellido" onChangeText={(t) => setFormData({ ...formData, apellido: t })} /></View>
           </View>
           <View style={styles.row}>
-            <View style={[styles.inputGroup, { flex: 1, marginRight: 10 }]}><Text style={styles.label}>FECHA DE NACIMIENTO</Text><TextInput style={styles.input} value={formData.fechaNacimiento} placeholder="DD/MM/AAAA" keyboardType="numbers-and-punctuation" accessibilityLabel="Fecha de nacimiento" onChangeText={(t) => setFormData({ ...formData, fechaNacimiento: t })} /></View>
+            <View style={[styles.inputGroup, { flex: 1, marginRight: 10 }]}><Text style={styles.label}>FECHA DE NACIMIENTO</Text><TextInput style={styles.input} value={formData.fechaNacimiento} placeholder="DD/MM/AAAA" keyboardType="number-pad" maxLength={10} accessibilityLabel="Fecha de nacimiento" onChangeText={(t) => setFormData({ ...formData, fechaNacimiento: formatearFechaEntrada(t) })} /></View>
             <View style={[styles.inputGroup, { flex: 1 }]}><Text style={styles.label}>TELÉFONO (OPCIONAL)</Text><TextInput style={styles.input} value={formData.telefono} keyboardType="phone-pad" accessibilityLabel="Teléfono" onChangeText={(t) => setFormData({ ...formData, telefono: t })} /></View>
           </View>
-          <View style={styles.inputGroup}><Text style={styles.label}>PLAN DE MEMBRESÍA</Text><TextInput style={styles.input} value={formData.plan} accessibilityLabel="Plan de membresía" onChangeText={(t) => setFormData({ ...formData, plan: t })} /></View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>PLAN DE MEMBRESÍA</Text>
+            <View style={styles.opcionesPlan} accessibilityRole="radiogroup" accessibilityLabel="Plan de membresía">
+              {opcionesPlan(formData.plan).map((opcion) => {
+                const elegido = formData.plan.trim() === opcion;
+                return (
+                  <TouchableOpacity
+                    key={opcion} style={[styles.opcionPlan, elegido && styles.opcionPlanActiva]}
+                    onPress={() => setFormData({ ...formData, plan: opcion })}
+                    accessibilityRole="radio" accessibilityState={{ selected: elegido }} accessibilityLabel={`Plan de membresía: ${opcion}`}>
+                    <Text style={[styles.opcionPlanTexto, elegido && styles.opcionPlanTextoActivo]}>{opcion}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
 
-          <TouchableOpacity style={[styles.checkboxCard, { width: "100%" }]} onPress={() => setConsentimiento(!consentimiento)} accessibilityRole="checkbox" accessibilityState={{ checked: consentimiento }}>
-            <View style={[styles.checkboxIcon, consentimiento && styles.checkboxIconActive]}>{consentimiento && <Text style={styles.checkboxCheck}>✓</Text>}</View>
-            <Text style={styles.checkboxText}>Autorizo el registro y uso de mis datos personales y de salud para evaluar mi aptitud física. Esta herramienta es de apoyo y no reemplaza el criterio de un profesional de la salud.</Text>
-          </TouchableOpacity>
+          {tarjetaConsentimiento()}
         </>
       )}
     </View>
   );
 
+  // Consentimiento para usar los datos de salud. Un socio nuevo lo acepta en el paso 1; uno ya registrado entra directo a las
+  // mediciones, así que se le pide aquí, antes de tomar cualquier dato.
+  const tarjetaConsentimiento = () => (
+    <TouchableOpacity style={[styles.checkboxCard, { width: "100%" }]} onPress={() => setConsentimiento(!consentimiento)} accessibilityRole="checkbox" accessibilityState={{ checked: consentimiento }}>
+      <View style={[styles.checkboxIcon, consentimiento && styles.checkboxIconActive]}>{consentimiento && <Text style={styles.checkboxCheck}>✓</Text>}</View>
+      <Text style={styles.checkboxText}>Autorizo el registro y uso de mis datos personales y de salud para evaluar mi aptitud física. Esta herramienta es de apoyo y no reemplaza el criterio de un profesional de la salud.</Text>
+    </TouchableOpacity>
+  );
+
   const renderPaso2 = () => (
     <View style={styles.stepContainer}>
       <Text style={styles.stepSubtitle}>PASO 2 - ESTACIÓN DE SENSORES</Text>
+      {fase === 'registrado' && previas && (
+        <View style={styles.infoBanner}>
+          <Text style={styles.infoTitle}>Hola, {previas.socio.nombre.split(' ')[0]}</Text>
+          <Text style={styles.infoText}>
+            {previas.evaluacion_vigente
+              ? `Ya completaste una evaluación el ${formatearFecha(previas.evaluacion_vigente.fecha)} (${ETIQUETA_ESTADO[previas.evaluacion_vigente.estado]}). Es válida por ${previas.vigencia_horas} horas; no necesitas repetirla, pero puedes hacerlo si lo requieres.`
+              : 'Te encontramos y cargamos tus datos. Si cambiaron, vuelve con «Atrás» para actualizarlos.'}
+          </Text>
+        </View>
+      )}
       <Text style={styles.stepTitle}>Tus mediciones de hoy</Text>
-      <Text style={styles.stepDescription}>Sigue las indicaciones de cada sensor y presiona medir. Si una medición falla, puedes repetirla.</Text>
-      <PasoMediciones
-        sensores={sensores}
-        lecturas={lecturas}
-        onLectura={(lectura) => setLecturas((previas) => ({ ...previas, [lectura.sensor]: lectura }))}
-        onError={(error) => setErroresMedicion((previos) => [...previos, error].slice(-50))}
-        estaturaCm={estaturaCm}
-        onEstatura={setEstaturaCm}
-      />
+      {consentimiento ? (
+        <>
+          <Text style={styles.stepDescription}>Sigue las indicaciones de cada sensor y presiona medir. Si una medición falla, puedes repetirla.</Text>
+          <PasoMediciones
+            sensores={sensores}
+            lecturas={lecturas}
+            onLectura={(lectura) => setLecturas((previas) => ({ ...previas, [lectura.sensor]: lectura }))}
+            onError={(error) => setErroresMedicion((previos) => [...previos, error].slice(-50))}
+            estaturaCm={estaturaCm}
+            onEstatura={setEstaturaCm}
+          />
+        </>
+      ) : (
+        <>
+          <Text style={styles.stepDescription}>Antes de medirte necesitamos tu autorización para usar tus datos de salud.</Text>
+          {tarjetaConsentimiento()}
+        </>
+      )}
     </View>
   );
 
@@ -536,6 +590,11 @@ const styles = StyleSheet.create({
   inputGroup: { marginBottom: 20 },
   label: { fontSize: 10, fontWeight: 'bold', color: '#94a3b8', letterSpacing: 1, textTransform: 'uppercase' },
   input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', padding: 15, borderRadius: 10, fontSize: 16, color: '#1e293b', marginTop: 8 },
+  opcionesPlan: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 },
+  opcionPlan: { paddingVertical: 12, paddingHorizontal: 22, borderRadius: 24, borderWidth: 1, borderColor: '#cbd5e1', backgroundColor: '#fff', marginRight: 10, marginBottom: 10 },
+  opcionPlanActiva: { backgroundColor: '#ea580c', borderColor: '#ea580c' },
+  opcionPlanTexto: { fontSize: 16, fontWeight: '600', color: '#475569' },
+  opcionPlanTextoActivo: { color: '#fff' },
   row: { flexDirection: 'row' },
   
   

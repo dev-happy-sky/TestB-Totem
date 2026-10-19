@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import TarjetaEstatura from './tarjeta-estatura';
@@ -90,6 +90,14 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
   const [enVivo, setEnVivo] = useState<Partial<Record<TipoSensor, LecturaEnVivo>>>({});
   const [manuales, setManuales] = useState<Partial<Record<TipoSensor, Manual>>>({});
 
+  // La estatura es el primer dato: mientras no se guarde, el resto de las mediciones queda bloqueado.
+  const bloqueado = !!onEstatura && estaturaCm === null;
+
+  // Cada medición automática lleva un número: si la persona decide escribir los valores a mano mientras el sensor sigue
+  // esperando (el tensiómetro tarda hasta 2 minutos), el número cambia y el resultado tardío se descarta.
+  const medicionVigente = useRef<Partial<Record<TipoSensor, number>>>({});
+  const cancelarMedicion = (tipo: TipoSensor) => { medicionVigente.current[tipo] = (medicionVigente.current[tipo] ?? 0) + 1; };
+
   const poner = (tipo: TipoSensor, estado: Estado) => setEstados((previo) => ({ ...previo, [tipo]: estado }));
 
   // R.52: al entrar se revisa qué sensores están conectados.
@@ -132,9 +140,13 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
   };
 
   const medir = async (tipo: TipoSensor) => {
+    if (bloqueado) return;
+    cancelarMedicion(tipo);
+    const numero = medicionVigente.current[tipo];
     poner(tipo, { tipo: 'midiendo' });
     try {
       const lectura = await sensores[tipo].medir();
+      if (medicionVigente.current[tipo] !== numero) return;   // se canceló: la persona escribió los valores a mano
       const problema = validarLectura(lectura);   // R.53, R.62
       if (problema) {
         registrarError(tipo, 'lectura_invalida', problema);
@@ -143,12 +155,18 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
       onLectura(lectura);
       poner(tipo, { tipo: 'pendiente' });
     } catch (error) {
+      if (medicionVigente.current[tipo] !== numero) return;
       if (error instanceof ErrorSensor) registrarError(tipo, error.codigo, error.message);
       else registrarError(tipo, 'error', error instanceof Error && error.message ? error.message : 'Error inesperado del sensor');
     }
   };
 
-  const abrirManual = (tipo: TipoSensor) => setManuales((previo) => ({ ...previo, [tipo]: { valores: {}, error: '' } }));
+  // Escribir a mano cancela la medición automática que siga esperando (por ejemplo el tensiómetro, que espera hasta 2 minutos).
+  const abrirManual = (tipo: TipoSensor) => {
+    cancelarMedicion(tipo);
+    setEstados((previo) => (previo[tipo]?.tipo === 'midiendo' ? { ...previo, [tipo]: { tipo: 'pendiente' } } : previo));
+    setManuales((previo) => ({ ...previo, [tipo]: { valores: {}, error: '' } }));
+  };
   const cerrarManual = (tipo: TipoSensor) => setManuales((previo) => ({ ...previo, [tipo]: undefined }));
   const escribirManual = (tipo: TipoSensor, clave: string, texto: string) =>
     setManuales((previo) => ({ ...previo, [tipo]: { valores: { ...previo[tipo]?.valores, [clave]: texto }, error: '' } }));
@@ -176,6 +194,7 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
       setManuales((previo) => ({ ...previo, [tipo]: { valores: previo[tipo]?.valores ?? {}, error: problema } }));
       return;
     }
+    cancelarMedicion(tipo);
     onLectura(lectura);
     poner(tipo, { tipo: 'pendiente' });
     cerrarManual(tipo);
@@ -183,13 +202,16 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
 
   return (
     <View style={estilos.grid}>
+      {onEstatura && <TarjetaEstatura estaturaCm={estaturaCm} peso={lecturas.balanza?.valores.peso} onEstatura={onEstatura} />}
       {TIPOS_SENSOR.map((tipo) => {
         const lectura = lecturas[tipo];
         const estado = estados[tipo] ?? { tipo: 'pendiente' };
         const etiqueta = ETIQUETA_SENSOR[tipo];
         return (
-          <View key={tipo} style={estilos.tarjeta} accessibilityLabel={`Sensor ${etiqueta}`}>
+          <View key={tipo} style={[estilos.tarjeta, bloqueado && estilos.bloqueada]} accessibilityLabel={`Sensor ${etiqueta}`}
+                accessibilityState={{ disabled: bloqueado }}>
             <Text style={estilos.titulo}>{etiqueta}</Text>
+            {bloqueado && <Text style={estilos.candado} accessibilityRole="text">🔒 Primero ingresa tu estatura</Text>}
             <Text style={estilos.instruccion}>{INSTRUCCIONES[tipo]}</Text>
 
             <View style={estilos.fila}>
@@ -207,7 +229,7 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
               })}
             </View>
 
-            {sensores[tipo].enVivo && enVivo[tipo] && (
+            {!bloqueado && sensores[tipo].enVivo && enVivo[tipo] && (
               <View style={estilos.enVivo} accessibilityLabel={`En vivo ${etiqueta}`}>
                 <Text style={estilos.enVivoTitulo}>EN VIVO</Text>
                 {enVivo[tipo]!.valida ? (
@@ -218,19 +240,19 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
               </View>
             )}
 
-            {estado.tipo === 'desconectado' && (
+            {!bloqueado && estado.tipo === 'desconectado' && (
               <Text style={estilos.error} accessibilityRole="alert">
                 Sensor desconectado. Revisa que esté encendido y cerca del tótem.
               </Text>
             )}
-            {estado.tipo === 'error' && (
+            {!bloqueado && estado.tipo === 'error' && (
               <Text style={estilos.error} accessibilityRole="alert">No se pudo medir: {estado.mensaje}. Intenta nuevamente.</Text>
             )}
             {estado.tipo === 'pendiente' && lectura && (
               <Text style={estilos.exito}>✓ Medición terminada correctamente</Text>
             )}
 
-            {MANUALES.includes(tipo) && estado.tipo !== 'midiendo' && (manuales[tipo] ? (
+            {!bloqueado && MANUALES.includes(tipo) && (manuales[tipo] ? (
               <View style={estilos.manual}>
                 <View style={estilos.fila}>
                   {camposManuales(tipo).map((campo) => (
@@ -264,20 +286,23 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
             ))}
 
             {estado.tipo === 'midiendo' ? (
-              <Text style={estilos.midiendo}>Midiendo…</Text>
+              <Text style={estilos.midiendo}>
+                {tipo === 'tensiometro' ? 'Esperando la medición: pulsa Start en el tensiómetro…' : 'Midiendo…'}
+              </Text>
             ) : estado.tipo === 'desconectado' ? (
-              <TouchableOpacity style={estilos.boton} onPress={() => revisarConexion([tipo])} accessibilityRole="button">
+              <TouchableOpacity style={[estilos.boton, bloqueado && estilos.botonBloqueado]} disabled={bloqueado} onPress={() => revisarConexion([tipo])}
+                                accessibilityRole="button" accessibilityState={{ disabled: bloqueado }}>
                 <Text style={estilos.botonTexto}>Reintentar conexión</Text>
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity style={estilos.boton} onPress={() => medir(tipo)} accessibilityRole="button" accessibilityLabel={`${estado.tipo === 'error' ? 'Reintentar' : lectura ? 'Volver a medir' : 'Medir'} ${etiqueta}`}>
+              <TouchableOpacity style={[estilos.boton, bloqueado && estilos.botonBloqueado]} disabled={bloqueado} onPress={() => medir(tipo)}
+                                accessibilityRole="button" accessibilityState={{ disabled: bloqueado }} accessibilityLabel={`${estado.tipo === 'error' ? 'Reintentar' : lectura ? 'Volver a medir' : 'Medir'} ${etiqueta}`}>
                 <Text style={estilos.botonTexto}>{estado.tipo === 'error' ? 'Reintentar' : lectura ? 'Volver a medir' : 'Medir'}</Text>
               </TouchableOpacity>
             )}
           </View>
         );
       })}
-      {onEstatura && <TarjetaEstatura estaturaCm={estaturaCm} peso={lecturas.balanza?.valores.peso} onEstatura={onEstatura} />}
     </View>
   );
 }
@@ -303,6 +328,9 @@ const estilos = StyleSheet.create({
   enVivoTitulo: { fontSize: 10, fontWeight: 'bold', color: '#16a34a', letterSpacing: 1, marginRight: 10 },
   enVivoValor: { fontSize: 16, fontWeight: 'bold', color: '#0f172a' },
   enVivoSinDato: { fontSize: 13, color: '#64748b' },
+  bloqueada: { opacity: 0.55, backgroundColor: '#f8fafc' },
+  candado: { fontSize: 12, fontWeight: 'bold', color: '#b45309', marginBottom: 8 },
+  botonBloqueado: { backgroundColor: '#cbd5e1' },
   enlace: { color: '#475569', fontSize: 13, textDecorationLine: 'underline', marginTop: 4 },
   manual: { marginTop: 4, padding: 10, borderRadius: 8, backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0' },
   entrada: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, fontSize: 18, minWidth: 80, color: '#0f172a', backgroundColor: '#fff' },
