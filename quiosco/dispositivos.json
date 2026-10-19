@@ -1,0 +1,16 @@
+{
+  "_comentario": "Sensores y su dirección Bluetooth (MAC). configurar_equipo.ps1 los usa para crear los puente.env de cada puente en el PC donde se ejecute. Cambia 'activo' para incluir o quitar un sensor.",
+  "oximetro": {
+    "id": "10:22:33:DA:C7:71",
+    "activo": true
+  },
+  "bascula": {
+    "id": "E0:D3:8E:62:51:3D",
+    "activo": true
+  },
+  "tensiometro": {
+    "id": "0C:7F:ED:74:07:54",
+    "activo": false,
+    "nota": "Beurer BM 54. Pasa a true cuando esté emparejado con ESTE PC (el vínculo Bluetooth es por equipo): ver puente-tensiometro/README.md."
+  }
+}

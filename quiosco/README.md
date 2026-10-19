@@ -79,6 +79,32 @@ Ajustes de la tablet para que sirva de tótem: *Ajustes → Pantalla → Tiempo 
 activa* mientras carga), y el brillo y el volumen fijos. La app se bloquea en vertical (`orientation: portrait` en `app.json`); cámbialo a
 `default` si la montas en horizontal.
 
+## Mover el tótem a otro PC
+
+Los sensores se conectan por Bluetooth al PC donde corren los puentes, y la tablet los llama por la IP de ese PC. Para cambiar de PC, en el
+equipo nuevo (con Python y Node.js instalados, y Bluetooth encendido) ejecuta **una sola vez**:
+
+```powershell
+git clone https://github.com/dev-happy-sky/TestB-Totem.git      # o git pull si ya lo tienes
+cd TestB-Totem\quiosco
+.\configurar_equipo.ps1
+```
+
+Hace, en orden: comprueba los requisitos y el Bluetooth; instala las dependencias; crea el `puente.env` de cada puente con las direcciones de
+`dispositivos.json`; fija en `quiosco.env` la IP **de ese equipo** (descarta la del PC anterior) y conserva la clave de los puentes; abre el
+firewall (pide permisos de administrador una vez); compila la app apuntando a ese equipo; y arranca los puentes y la app comprobando que
+respondan. Al final imprime la dirección que debe abrir la tablet.
+
+- `.\configurar_equipo.ps1 -SoloVerificar` muestra qué haría y qué falta, sin cambiar nada.
+- `-IP 192.168.1.50` fija la IP si la detectada no es la de la red de la tablet. También se pueden omitir pasos: `-SinDependencias`,
+  `-SinFirewall`, `-SinCompilar`, `-SinIniciar`.
+- **Sensores:** edita `dispositivos.json` para cambiar una dirección o poner `"activo": true/false`. El tensiómetro viene desactivado hasta
+  que esté emparejado.
+- **Hay que repetir en el equipo nuevo:** el emparejamiento Bluetooth del tensiómetro (es por PC) y, si la tablet usa el APK, volver a cargar
+  la IP con `variables_eas.ps1 -Ejecutar` y compilar otra vez. Con la versión web de la tablet basta abrir la dirección nueva. Para no repetirlo,
+  reserva una IP fija para el PC en el router.
+- En el PC anterior, detén los puentes (`.\detener_quiosco.ps1`): dos PC no pueden usar el mismo sensor a la vez.
+
 ## Cosas a saber
 
 - Se usa Chrome o Edge en modo `--kiosk` con un perfil propio (`%LOCALAPPDATA%\TotemQuiosco`), sin barras ni pestañas. La app ya no tiene
