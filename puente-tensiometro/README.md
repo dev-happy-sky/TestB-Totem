@@ -35,7 +35,7 @@ python -m puente
 | `PUENTE_TOKEN` | — | Clave que la app envía en `X-Puente-Key`. **Obligatoria si `PUENTE_HOST` no es localhost** |
 | `PUENTE_ORIGENES` | — | Orígenes CORS permitidos (solo si la app corre como web) |
 | `PUENTE_TIMEOUT_S` | `120` | Tiempo máximo que `/medir` espera la medición |
-| `PUENTE_EMPAREJAR` | desactivado | `true` para emparejar con el PC al conectar (Windows) |
+| `PUENTE_EMPAREJAR` | desactivado | `true` para intentar emparejar en cada conexión. Mejor emparejar una vez con `python -m puente.emparejar` |
 | `PUENTE_ANTIGUEDAD_MAX_MIN` | `10` | Descarta mediciones con fecha más vieja que esto; `0` no descarta por fecha |
 
 Arranque automático en Windows: copia `puente.env.example` a `puente.env`, comprueba con `.\iniciar_puente.ps1 -Verificar` e instala con
@@ -63,13 +63,40 @@ Característica `0x2A35` *Blood Pressure Measurement* (indicaciones): banderas, 
 y opcionales fecha/hora, pulso, id de usuario y estado de la medición (movimiento, manguito flojo, pulso irregular, posición). Detalle en
 `puente/protocolo.py`. Soporta kPa (convierte a mmHg).
 
-## Para conectarlo al aparato real (pendiente)
+## Emparejar el aparato con el PC (una sola vez)
 
-1. Empareja el BM 54 con el PC (Configuración → Bluetooth, con el tensiómetro en modo de emparejamiento), o arranca con
-   `PUENTE_EMPAREJAR=true`. Si estaba vinculado al celular o a la app de Beurer, desvincúlalo: suelen aceptar un solo dispositivo.
-2. Arranca el puente, pulsa Start en el brazalete y espera el resultado; compara la presión recibida con la pantalla.
-3. Si el BM 54 usa un formato propio en vez del estándar, o entrega mediciones antiguas sin fecha, ajustar `protocolo.py` y `lector.py`.
-   Una captura de las indicaciones en bruto (nRF Connect) basta para deducirlo.
+Probado con el BM 54 real: conecta, pero **rechaza leer las mediciones** (`Insufficient Authentication`) si no hay un vínculo cifrado
+con el PC, y solo acepta crearlo en su **modo de emparejamiento**. Además, Windows guarda el vínculo aunque el aparato ya lo haya
+olvidado, y entonces `bleak` se salta el emparejamiento. La herramienta se encarga de todo:
+
+```powershell
+cd puente-tensiometro
+$env:TENSIOMETRO_ID = "0C:7F:ED:74:07:54"
+python -m puente.emparejar          # espera 90 s (o: python -m puente.emparejar 180)
+```
+
+1. Detén antes el puente si está corriendo (compite por la conexión).
+2. Ejecuta el comando y **pon el tensiómetro en modo de emparejamiento** (símbolo de Bluetooth parpadeando).
+3. Borra el vínculo viejo, empareja y comprueba que ya se puede leer; termina con `LISTO: tensiómetro emparejado`.
+   Si dice que el aparato rechaza la lectura, no estaba en modo de emparejamiento: vuélvelo a poner y espera el siguiente intento.
+
+**Si dice que el vínculo quedó «solo CIFRADO»:** es lo que pasó con el BM 54 real. Windows lo guardó con nivel *Encryption* (sin
+autenticación) y el aparato exige uno *autenticado* (código o confirmación en pantalla); `bleak` solo sabe hacer el primero. Hay que
+emparejar desde **Configuración de Windows → Bluetooth y dispositivos → Agregar dispositivo** (antes, quita «BM54» de la lista) con el
+aparato en modo de emparejamiento, y seguir lo que pida Windows. Para comprobar el resultado, el nivel debe ser 3:
+
+```powershell
+python -c "import asyncio; from puente.emparejar import nivel_de_vinculo_windows as n; print(asyncio.run(n('0C:7F:ED:74:07:54')))"
+```
+
+Después arranca el puente **sin** `PUENTE_EMPAREJAR`. Si más adelante vuelve el error de autenticación (el aparato perdió el vínculo,
+por ejemplo al enlazarlo con el celular), repite este paso.
+
+## Diagnóstico
+
+El puente registra con marca de hora cada paso (no los valores): `Escuchando`, `Tensiómetro visible: conectando`, `Tensiómetro conectado`,
+`Suscrito a las mediciones`, `Medición recibida`. Conectar y suscribirse tienen un tope de 12 s; el aparato solo es visible un par de
+segundos tras pulsar su botón, por eso el escáner queda encendido siempre y se conecta en cuanto lo ve.
 
 ## Conectarlo a la app
 
