@@ -30,26 +30,41 @@ function Nombres-Puentes($config) {
     return $nombres
 }
 
-function Guardar-Config([string]$clave, [string]$valor) {
+# Pone (o reemplaza) CLAVE=valor en un archivo .env, conservando el resto de sus líneas. Lo crea si no existe.
+function Guardar-EnEnv([string]$archivo, [string]$clave, [string]$valor) {
     $lineas = @()
-    if (Test-Path $script:ArchivoConfig) { $lineas = @(Get-Content $script:ArchivoConfig) }
+    if (Test-Path $archivo) { $lineas = @(Get-Content $archivo) }
     $nueva = "$clave=$valor"
     $encontrada = $false
     for ($i = 0; $i -lt $lineas.Count; $i++) {
-        if ($lineas[$i] -match "^\s*$clave\s*=") { $lineas[$i] = $nueva; $encontrada = $true }
+        if ($lineas[$i] -match "^\s*$([regex]::Escape($clave))\s*=") { $lineas[$i] = $nueva; $encontrada = $true }
     }
     if (-not $encontrada) { $lineas += $nueva }
+    Set-Content -Path $archivo -Value $lineas -Encoding UTF8
+}
+
+function Guardar-Config([string]$clave, [string]$valor) { Guardar-EnEnv $script:ArchivoConfig $clave $valor }
+
+# Quita una clave de quiosco.env (por ejemplo una IP que quedó de otro equipo).
+function Quitar-Config([string]$clave) {
+    if (-not (Test-Path $script:ArchivoConfig)) { return }
+    $lineas = @(Get-Content $script:ArchivoConfig | Where-Object { $_ -notmatch "^\s*$([regex]::Escape($clave))\s*=" })
     Set-Content -Path $script:ArchivoConfig -Value $lineas -Encoding UTF8
 }
 
-# IPv4 de la red local de este equipo (la de la interfaz con puerta de enlace). Se puede fijar con IP_PC en quiosco.env.
-function Obtener-IP($config) {
-    if ($config.IP_PC) { return $config.IP_PC }
+# IPv4 de la red local de este equipo (la de la interfaz con puerta de enlace), ignorando lo que diga quiosco.env.
+function Detectar-IP {
     $ip = Get-NetIPConfiguration -ErrorAction SilentlyContinue |
         Where-Object { $_.IPv4DefaultGateway -and $_.NetAdapter.Status -eq 'Up' } |
         ForEach-Object { $_.IPv4Address.IPAddress } | Select-Object -First 1
-    if (-not $ip) { throw "No se pudo detectar la IP de la red local. Defínela en quiosco.env: IP_PC=192.168.x.x" }
+    if (-not $ip) { throw "No se pudo detectar la IP de la red local. Pásala con -IP 192.168.x.x o defínela en quiosco.env: IP_PC=192.168.x.x" }
     return $ip
+}
+
+# La IP a usar: la fijada con IP_PC en quiosco.env o, si no hay, la detectada.
+function Obtener-IP($config) {
+    if ($config.IP_PC) { return $config.IP_PC }
+    return Detectar-IP
 }
 
 # Clave que la app envía a los puentes cuando escuchan en la red. Se genera una vez y se guarda en quiosco.env (git la ignora).
