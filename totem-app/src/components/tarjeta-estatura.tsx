@@ -43,7 +43,8 @@ export default function TarjetaEstatura({ estaturaCm, peso, onEstatura }: Props)
     <View style={estilos.tarjeta} accessibilityLabel="Estatura e IMC">
       <Text style={estilos.titulo}>Estatura e IMC</Text>
       <Text style={estilos.instruccion}>
-        Mide tu estatura de pie y sin zapatos, y escríbela en centímetros. El IMC se calcula con el peso de la báscula.
+        Es el primer dato: mide tu estatura de pie y sin zapatos y escríbela en centímetros para desbloquear las demás mediciones.
+        El IMC se calcula con el peso de la báscula.
       </Text>
 
       <View style={estilos.fila}>

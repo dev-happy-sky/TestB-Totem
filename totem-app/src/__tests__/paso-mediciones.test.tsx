@@ -74,7 +74,7 @@ describe('PasoMediciones', () => {
     const pulsacion = fireEvent.press(screen.getByLabelText('Medir Tensiómetro'));
 
     // Assert
-    expect(await screen.findByText('Midiendo…')).toBeTruthy();
+    expect(await screen.findByText('Esperando la medición: pulsa Start en el tensiómetro…')).toBeTruthy();
     expect(screen.queryByLabelText('Medir Tensiómetro')).toBeNull();
     terminar(await crearSensoresSimulados({ latenciaMs: 0 }).tensiometro.medir());
     await pulsacion;
@@ -663,5 +663,205 @@ describe('estatura manual e IMC', () => {
 
     // Assert
     expect(alCambiar).toHaveBeenCalledWith(null);
+  });
+});
+
+describe('bloqueo hasta escribir la estatura', () => {
+  const montarBloqueo = async (estaturaCm: number | null, conTarjeta = true) => {
+    const alLeer = jest.fn();
+    const sensores = crearSensoresSimulados({ latenciaMs: 0, azar: () => 0.5 });
+    await render(
+      <PasoMediciones sensores={sensores} lecturas={{}} onLectura={alLeer} onError={jest.fn()}
+                      {...(conTarjeta ? { estaturaCm, onEstatura: jest.fn() } : {})} />,
+    );
+    return { alLeer };
+  };
+  const SENSORES = ['Tensiómetro', 'Oxímetro', 'Balanza', 'Prueba de esfuerzo', 'Oxímetro (FC de recuperación)'];
+
+  test('sin estatura cada sensor muestra el candado y su botón está deshabilitado', async () => {
+    // Arrange / Act
+    await montarBloqueo(null);
+
+    // Assert
+    expect(screen.getAllByText('🔒 Primero ingresa tu estatura')).toHaveLength(SENSORES.length);
+    for (const sensor of SENSORES) {
+      expect(screen.getByLabelText(`Medir ${sensor}`).props.accessibilityState?.disabled).toBe(true);
+      expect(screen.getByLabelText(`Sensor ${sensor}`).props.accessibilityState?.disabled).toBe(true);
+    }
+  });
+
+  test('sin estatura no se puede medir ni registrar valores a mano', async () => {
+    // Arrange
+    const { alLeer } = await montarBloqueo(null);
+
+    // Act
+    await fireEvent.press(screen.getByLabelText('Medir Tensiómetro'));
+
+    // Assert
+    expect(alLeer).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('Ingresar manualmente Tensiómetro')).toBeNull();
+    expect(screen.queryByLabelText('Ingresar manualmente Balanza')).toBeNull();
+  });
+
+  test('con estatura guardada todo queda habilitado y se puede medir', async () => {
+    // Arrange
+    const { alLeer } = await montarBloqueo(172);
+
+    // Act
+    await fireEvent.press(screen.getByLabelText('Medir Tensiómetro'));
+
+    // Assert
+    expect(screen.queryByText('🔒 Primero ingresa tu estatura')).toBeNull();
+    await waitFor(() => expect(alLeer).toHaveBeenCalledTimes(1));
+    expect(screen.getByLabelText('Ingresar manualmente Tensiómetro')).toBeTruthy();
+  });
+
+  test('sin la tarjeta de estatura (onEstatura no pasado) no hay bloqueo', async () => {
+    // Arrange / Act
+    await montarBloqueo(null, false);
+
+    // Assert
+    expect(screen.queryByText('🔒 Primero ingresa tu estatura')).toBeNull();
+    expect(screen.getByLabelText('Medir Tensiómetro').props.accessibilityState?.disabled).toBeFalsy();
+  });
+
+  test('la tarjeta de estatura aparece antes que los sensores', async () => {
+    // Arrange / Act
+    await montarBloqueo(null);
+
+    // Assert
+    const texto = JSON.stringify(screen.toJSON());
+    expect(texto.indexOf('Estatura e IMC')).toBeLessThan(texto.indexOf('Sensor Tensiómetro'));
+  });
+});
+
+describe('ingreso manual mientras el sensor espera', () => {
+  const LECTURA_AUTO: Lectura = {
+    sensor: 'tensiometro', valores: { presionSys: 130, presionDia: 85 }, dispositivo: { id: '0C:7F:ED:74:07:54', calibracion: 'desconocida' },
+    capturadoEn: '2026-10-18T10:00:00Z',
+  };
+
+  // Un tensiómetro cuya medición queda pendiente hasta que la prueba la termine o falle.
+  const montarEspera = async () => {
+    let terminar: (l: Lectura) => void = () => {};
+    let fallar: (e: Error) => void = () => {};
+    const simulados = crearSensoresSimulados({ latenciaMs: 0 });
+    const lento: Sensor = {
+      tipo: 'tensiometro', disponible: async () => true,
+      medir: () => new Promise<Lectura>((resolver, rechazar) => { terminar = resolver; fallar = rechazar; }),
+    };
+    const alLeer = jest.fn();
+    const alFallar = jest.fn();
+    await render(<PasoMediciones sensores={{ ...simulados, tensiometro: lento }} lecturas={{}} onLectura={alLeer} onError={alFallar} />);
+    return { alLeer, alFallar, terminar: (l: Lectura) => terminar(l), fallar: (e: Error) => fallar(e) };
+  };
+
+  // Empieza a esperar la medición; la promesa devuelta debe esperarse al final de la prueba, cuando el sensor ya respondió.
+  const empezarEspera = async () => {
+    const pulsacion = fireEvent.press(screen.getByLabelText('Medir Tensiómetro'));
+    await screen.findByText('Esperando la medición: pulsa Start en el tensiómetro…');
+    return { pulsacion };   // envuelta: devolver la promesa tal cual haría que `await` espere a que termine la medición
+  };
+
+  const escribirManual = async (sistolica: string, diastolica: string) => {
+    await fireEvent.press(await screen.findByLabelText('Ingresar manualmente Tensiómetro'));
+    await fireEvent.changeText(screen.getByLabelText('SISTÓLICA manual'), sistolica);
+    await fireEvent.changeText(screen.getByLabelText('DIASTÓLICA manual'), diastolica);
+    await fireEvent.press(screen.getByLabelText('Registrar valores de Tensiómetro'));
+  };
+
+  test('mientras espera la medición del tensiómetro sigue disponible escribir los valores a mano', async () => {
+    // Arrange
+    const { terminar } = await montarEspera();
+
+    // Act
+    const { pulsacion } = await empezarEspera();
+
+    // Assert
+    expect(screen.getByLabelText('Ingresar manualmente Tensiómetro')).toBeTruthy();
+    terminar(LECTURA_AUTO);
+    await pulsacion;
+  });
+
+  test('escribir a mano cancela la espera y registra los valores manuales', async () => {
+    // Arrange
+    const { alLeer, terminar } = await montarEspera();
+    const { pulsacion } = await empezarEspera();
+
+    // Act
+    await fireEvent.press(screen.getByLabelText('Ingresar manualmente Tensiómetro'));
+    expect(screen.queryByText('Esperando la medición: pulsa Start en el tensiómetro…')).toBeNull();
+    await fireEvent.changeText(screen.getByLabelText('SISTÓLICA manual'), '118');
+    await fireEvent.changeText(screen.getByLabelText('DIASTÓLICA manual'), '78');
+    await fireEvent.press(screen.getByLabelText('Registrar valores de Tensiómetro'));
+
+    // Assert
+    await waitFor(() => expect(alLeer).toHaveBeenCalledTimes(1));
+    expect(alLeer.mock.calls[0][0]).toMatchObject({ valores: { presionSys: 118, presionDia: 78 }, dispositivo: { id: 'manual' } });
+    terminar(LECTURA_AUTO);
+    await pulsacion;
+  });
+
+  test('si el aparato entrega su medición después de cancelar, se descarta y no pisa los valores manuales', async () => {
+    // Arrange
+    const { alLeer, terminar } = await montarEspera();
+    const { pulsacion } = await empezarEspera();
+    await escribirManual('118', '78');
+    await waitFor(() => expect(alLeer).toHaveBeenCalledTimes(1));
+
+    // Act: llega tarde la medición del aparato
+    terminar(LECTURA_AUTO);
+    await pulsacion;
+
+    // Assert
+    expect(alLeer).toHaveBeenCalledTimes(1);
+    expect(alLeer.mock.calls[0][0].dispositivo.id).toBe('manual');
+  });
+
+  test('un error tardío del aparato tras cancelar no muestra ningún aviso ni se registra', async () => {
+    // Arrange
+    const { alFallar, fallar } = await montarEspera();
+    const { pulsacion } = await empezarEspera();
+    await fireEvent.press(screen.getByLabelText('Ingresar manualmente Tensiómetro'));
+
+    // Act
+    fallar(new Error('se agotó el tiempo'));
+    await pulsacion;
+
+    // Assert
+    expect(alFallar).not.toHaveBeenCalled();
+    expect(screen.queryByText(/No se pudo medir/)).toBeNull();
+  });
+
+  test('abrir el ingreso manual sin que haya espera no cambia nada más', async () => {
+    // Arrange
+    const { alLeer } = await montarEspera();
+
+    // Act
+    await fireEvent.press(screen.getByLabelText('Ingresar manualmente Tensiómetro'));
+
+    // Assert
+    expect(screen.getByLabelText('SISTÓLICA manual')).toBeTruthy();
+    expect(alLeer).not.toHaveBeenCalled();
+  });
+
+  test('una nueva medición automática después de cancelar sí se acepta', async () => {
+    // Arrange: la primera espera se cancela al escribir a mano y su resultado tardío se descarta
+    const { alLeer, terminar } = await montarEspera();
+    const { pulsacion: primera } = await empezarEspera();
+    await fireEvent.press(screen.getByLabelText('Ingresar manualmente Tensiómetro'));
+    terminar(LECTURA_AUTO);
+    await primera;
+    expect(alLeer).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByLabelText('Cancelar ingreso manual de Tensiómetro'));
+
+    // Act
+    const { pulsacion: segunda } = await empezarEspera();
+    terminar(LECTURA_AUTO);
+    await segunda;
+
+    // Assert
+    expect(alLeer).toHaveBeenCalledTimes(1);
+    expect(alLeer).toHaveBeenCalledWith(LECTURA_AUTO);
   });
 });

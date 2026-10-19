@@ -23,6 +23,17 @@ export function parseFechaNacimiento(texto: string, hoy: Date = new Date()): str
   return `${String(anio).padStart(4, '0')}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
 }
 
+/**
+ * Máscara del campo de fecha de nacimiento: deja solo números (máximo 8) y coloca las barras, de modo que siempre queda
+ * "DD/MM/AAAA" mientras se escribe ("1503" → "15/03", "15032002" → "15/03/2002"). Sin barra final: al borrar no se queda trabado.
+ */
+export function formatearFechaEntrada(texto: string): string {
+  const digitos = (texto ?? '').replace(/\D/g, '').slice(0, 8);
+  if (digitos.length <= 2) return digitos;
+  if (digitos.length <= 4) return `${digitos.slice(0, 2)}/${digitos.slice(2)}`;
+  return `${digitos.slice(0, 2)}/${digitos.slice(2, 4)}/${digitos.slice(4)}`;
+}
+
 /** "AAAA-MM-DD" → "DD/MM/AAAA" (sin pasar por Date, para no depender de la zona horaria). */
 export function isoADisplay(iso: string | null | undefined): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? '');
