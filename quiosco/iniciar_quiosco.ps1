@@ -1,43 +1,42 @@
-﻿# Arranca todo el tótem en este equipo: los puentes de los sensores, la app (compilada para web) y el navegador a pantalla completa.
-# Uso:  .\iniciar_quiosco.ps1                (arranca todo)
-#       .\iniciar_quiosco.ps1 -SinNavegador  (arranca los servicios sin abrir el navegador)
-#       .\iniciar_quiosco.ps1 -Verificar     (solo muestra qué haría)
-# Configuración opcional en quiosco.env (ver quiosco.env.example). Antes, una vez: .\construir_app.ps1
-param([switch]$SinNavegador, [switch]$Verificar)
+﻿# Arranca todo el tótem en este equipo: los puentes de los sensores, la app (compilada para web) y, si corresponde, el navegador.
+# Uso:  .\iniciar_quiosco.ps1                  (puentes + app + navegador a pantalla completa, todo en este PC)
+#       .\iniciar_quiosco.ps1 -SinNavegador    (arranca los servicios sin abrir el navegador)
+#       .\iniciar_quiosco.ps1 -Red             (para una tablet: puentes y app escuchan en la red local; no abre navegador aquí)
+#       .\iniciar_quiosco.ps1 -Verificar       (solo muestra qué haría)
+# Configuración opcional en quiosco.env (ver quiosco.env.example). Antes, una vez: .\construir_app.ps1  (o  -Red)
+param([switch]$SinNavegador, [switch]$Red, [switch]$Verificar)
 
-$raiz = Split-Path $PSScriptRoot -Parent
-$config = @{ PUERTO_APP = '8081'; PUENTES = 'oximetro,bascula'; NAVEGADOR = '' }
-$archivo = Join-Path $PSScriptRoot 'quiosco.env'
-if (Test-Path $archivo) {
-    foreach ($linea in Get-Content $archivo) {
-        $texto = $linea.Trim()
-        if (-not $texto -or $texto.StartsWith('#')) { continue }
-        $i = $texto.IndexOf('=')
-        if ($i -lt 1) { continue }
-        $config[$texto.Substring(0, $i).Trim()] = $texto.Substring($i + 1).Trim().Trim('"')
-    }
-}
-
+. (Join-Path $PSScriptRoot 'comun.ps1')
+$config = Leer-Config
 $puerto = $config.PUERTO_APP
-$carpetaApp = Join-Path $PSScriptRoot 'app-web'
+$carpetaApp = Join-Path $PSScriptRoot $(if ($Red) { 'app-web-red' } else { 'app-web' })
 $python = if ($env:PUENTE_PYTHON) { $env:PUENTE_PYTHON } else { 'python' }
-$url = "http://localhost:$puerto"
 
 if (-not (Test-Path (Join-Path $carpetaApp 'index.html'))) {
-    Write-Host "Falta la app compilada. Ejecuta primero: .\construir_app.ps1" -ForegroundColor Red
+    Write-Host "Falta la app compilada. Ejecuta primero: .\construir_app.ps1$(if ($Red) { ' -Red' })" -ForegroundColor Red
     exit 1
 }
 
-# Los puentes solo aceptan llamadas del navegador desde el origen de la app.
-$env:PUENTE_ORIGENES = $url
+if ($Red) {
+    $ip = Obtener-IP $config
+    $urlTablet = "http://${ip}:$puerto"
+    $url = "http://localhost:$puerto"
+    # Los puentes escuchan en toda la red local, así que exigen la clave; y solo aceptan llamadas del navegador desde la app.
+    $env:PUENTE_HOST = '0.0.0.0'
+    $env:PUENTE_TOKEN = Obtener-Token $config
+    $env:PUENTE_ORIGENES = "$urlTablet,$url"
+    $direccionApp = '0.0.0.0'
+} else {
+    $url = "http://localhost:$puerto"
+    $env:PUENTE_ORIGENES = $url
+    $direccionApp = '127.0.0.1'
+}
 
-$carpetasPuente = @{ oximetro = 'puente-oximetro'; bascula = 'puente-bascula'; tensiometro = 'puente-tensiometro' }
 $puentes = @()
-foreach ($nombre in ($config.PUENTES -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
-    if (-not $carpetasPuente.ContainsKey($nombre)) { Write-Host "Puente desconocido en PUENTES: $nombre" -ForegroundColor Red; exit 1 }
-    $carpeta = Join-Path $raiz $carpetasPuente[$nombre]
+foreach ($nombre in (Nombres-Puentes $config)) {
+    $carpeta = Join-Path $script:Raiz $script:CarpetasPuente[$nombre]
     if (-not (Test-Path (Join-Path $carpeta 'puente.env'))) {
-        Write-Host "Se omite '$nombre': falta $($carpetasPuente[$nombre])\puente.env" -ForegroundColor Yellow
+        Write-Host "Se omite '$nombre': falta $($script:CarpetasPuente[$nombre])\puente.env" -ForegroundColor Yellow
         continue
     }
     $puentes += [pscustomobject]@{ Nombre = $nombre; Script = Join-Path $carpeta 'iniciar_puente.ps1' }
@@ -55,10 +54,13 @@ function Buscar-Navegador {
 $navegador = Buscar-Navegador
 
 if ($Verificar) {
-    Write-Host "App:        $url  (sirve $carpetaApp)"
+    Write-Host "Modo:       $(if ($Red) { 'red (tablet)' } else { 'local (este PC)' })"
+    Write-Host "App:        $url  (sirve $carpetaApp, escucha en $direccionApp)"
+    if ($Red) { Write-Host "Tablet:     $urlTablet" }
     Write-Host "Puentes:    $(if ($puentes) { ($puentes | ForEach-Object Nombre) -join ', ' } else { '(ninguno)' })"
-    Write-Host "Navegador:  $(if ($navegador) { $navegador } else { '(no encontrado)' })"
+    Write-Host "Navegador:  $(if ($Red) { '(no se abre en modo red)' } elseif ($navegador) { $navegador } else { '(no encontrado)' })"
     Write-Host "PUENTE_ORIGENES = $env:PUENTE_ORIGENES"
+    if ($Red) { Write-Host "PUENTE_HOST = $env:PUENTE_HOST  (clave de $($env:PUENTE_TOKEN.Length) caracteres)" }
     exit 0
 }
 
@@ -68,19 +70,20 @@ foreach ($puente in $puentes) {
     $pids += $proceso.Id
     Write-Host "Puente $($puente.Nombre) iniciado."
 }
-$servidor = Start-Process $python -WindowStyle Hidden -PassThru -ArgumentList '-m', 'http.server', $puerto, '--bind', '127.0.0.1', '--directory', "`"$carpetaApp`""
+$servidor = Start-Process $python -WindowStyle Hidden -PassThru -ArgumentList '-m', 'http.server', $puerto, '--bind', $direccionApp, '--directory', "`"$carpetaApp`""
 $pids += $servidor.Id
 $pids | Set-Content (Join-Path $env:TEMP 'quiosco.pids')
 
-# Espera a que la app responda antes de abrir el navegador.
+# Espera a que la app responda.
 $listo = $false
 for ($i = 0; $i -lt 30 -and -not $listo; $i++) {
     try { $listo = (Invoke-WebRequest "http://127.0.0.1:$puerto" -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200 } catch { Start-Sleep -Seconds 1 }
 }
 if (-not $listo) { Write-Host "La app no respondió en $url" -ForegroundColor Red; exit 1 }
 Write-Host "App lista en $url"
+if ($Red) { Write-Host "En la tablet abre: $urlTablet" -ForegroundColor Green }
 
-if ($SinNavegador) { exit 0 }
+if ($SinNavegador -or $Red) { exit 0 }
 if (-not $navegador) { Write-Host "No se encontró Chrome ni Edge: abre $url a mano." -ForegroundColor Yellow; exit 0 }
 
 $perfil = Join-Path $env:LOCALAPPDATA 'TotemQuiosco'
