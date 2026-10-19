@@ -43,6 +43,42 @@ scripts: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 Configuración opcional en `quiosco.env` (copia `quiosco.env.example`): `PUERTO_APP` (8081), `PUENTES` (`oximetro,bascula`; también
 `tensiometro`) y `NAVEGADOR` (ruta de Chrome o Edge si no se detecta). Un puente sin `puente.env` se omite con un aviso.
 
+## Tablet (Samsung Galaxy Tab A7)
+
+La tablet muestra la app; **los sensores siguen conectados por Bluetooth al PC** (los puentes) y la tablet los llama por Wi-Fi, así que el
+PC y la tablet deben estar en la misma red y el PC encendido. Como los puentes ahora escuchan en la red local, exigen una **clave**
+(se genera sola en `quiosco.env`, que git ignora) y solo aceptan llamadas de la app.
+
+Pasos comunes (una vez):
+1. En `quiosco.env` deja la lista de sensores en `PUENTES=` (por ejemplo `oximetro,bascula`; `IP_PC=` solo si la detección automática elige mal).
+   Conviene **reservar una IP fija** para el PC en el router: la IP queda incrustada en la app.
+2. En una PowerShell **como administrador**: `.\abrir_firewall.ps1` (abre 8081 y 8765-8767 solo para redes privadas; avisa si tu red está
+   marcada como Pública y cómo cambiarla). Para cerrarlos: `.\abrir_firewall.ps1 -Quitar`.
+
+**Vía A: navegador de la tablet (inmediata, sin cuentas)**
+```powershell
+.\construir_app.ps1 -Red        # compila con la IP del PC y la clave de los puentes (carpeta app-web-red)
+.\iniciar_quiosco.ps1 -Red      # puentes + app escuchando en la red; no abre navegador en el PC
+```
+En la tablet abre Chrome en la dirección que imprime el script (`http://<IP del PC>:8081`). Para pantalla completa: menú de Chrome →
+*Agregar a la pantalla principal*. Es un atajo a una página `http`: Chrome la abre con su barra. Para quitarla del todo, usa la vía B.
+
+**Vía B: app instalada (APK, pantalla completa de verdad)**
+El APK se compila en la nube con EAS (proyecto ya configurado en `app.json`). La app permite `http://` hacia los puentes
+(`usesCleartextTraffic`, en el plugin `expo-build-properties`).
+```powershell
+cd ..\totem-app
+npx eas-cli login                                  # una vez
+..\quiosco\variables_eas.ps1 -Ejecutar            # carga en EAS la IP, los sensores y la clave (la nube no lee tu .env)
+npx eas-cli build --platform android --profile tablet
+```
+Al terminar, EAS da un enlace/QR al `.apk`: ábrelo en la tablet, permite instalar desde esa fuente y listo. Si cambia la IP del PC, los
+sensores o la clave, hay que repetir `variables_eas.ps1` y volver a compilar. En ambas vías hay que tener corriendo `.\iniciar_quiosco.ps1 -Red`.
+
+Ajustes de la tablet para que sirva de tótem: *Ajustes → Pantalla → Tiempo de espera* al máximo (o *Opciones de desarrollador → Permanecer
+activa* mientras carga), y el brillo y el volumen fijos. La app se bloquea en vertical (`orientation: portrait` en `app.json`); cámbialo a
+`default` si la montas en horizontal.
+
 ## Cosas a saber
 
 - Se usa Chrome o Edge en modo `--kiosk` con un perfil propio (`%LOCALAPPDATA%\TotemQuiosco`), sin barras ni pestañas. La app ya no tiene
