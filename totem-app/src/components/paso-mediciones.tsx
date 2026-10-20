@@ -3,8 +3,9 @@ import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-nativ
 
 import TarjetaEstatura from './tarjeta-estatura';
 import {
-  ErrorSensor, ETIQUETA_SENSOR, INSTRUCCIONES, TIPOS_SENSOR, validarLectura,
-  type CodigoError, type ErrorMedicion, type Lectura, type LecturaEnVivo, type Sensores, type TipoSensor, type ValoresMedidos,
+  ErrorSensor, ETIQUETA_SENSOR, INSTRUCCIONES, TIEMPOS_DEL_CICLO, TIPOS_SENSOR, validarLectura,
+  type CodigoError, type ErrorMedicion, type Lectura, type LecturaEnVivo, type ProgresoPrueba, type Sensores, type Sexo, type TipoSensor,
+  type ValoresMedidos,
 } from '../sensores';
 
 type Estado =
@@ -65,9 +66,12 @@ const CAMPOS: Record<TipoSensor, Campo[]> = {
 
 // Sensores cuyos valores también pueden registrarse a mano (se leen de la pantalla del dispositivo). De la balanza solo el peso:
 // IMC, grasa y masa muscular necesitan otros instrumentos.
-const MANUALES: readonly TipoSensor[] = ['tensiometro', 'oximetro', 'oximetro_recuperacion', 'balanza'];
-const camposManuales = (tipo: TipoSensor): Campo[] =>
-  tipo === 'balanza' ? [{ clave: 'peso', etiqueta: 'PESO', unidad: 'kg', decimal: true }] : CAMPOS[tipo];
+const MANUALES: readonly TipoSensor[] = ['tensiometro', 'oximetro', 'oximetro_recuperacion', 'balanza', 'prueba_esfuerzo'];
+const camposManuales = (tipo: TipoSensor): Campo[] => {
+  if (tipo === 'balanza') return [{ clave: 'peso', etiqueta: 'PESO', unidad: 'kg', decimal: true }];
+  if (tipo === 'prueba_esfuerzo') return [{ clave: 'vo2Max', etiqueta: 'VO₂ MÁX', unidad: 'ml/kg·min', decimal: true }];
+  return CAMPOS[tipo];
+};
 export const ID_DISPOSITIVO_MANUAL = 'manual';
 
 type Manual = { valores: Record<string, string>; error: string };
@@ -80,6 +84,11 @@ const mensajeEnVivo = (tipo: TipoSensor, motivo: LecturaEnVivo['motivo']): strin
   return motivo === 'sin_dedo' ? 'Coloca el dedo en el oxímetro' : 'Sin señal del oxímetro';
 };
 
+const formatearTiempo = (segundos: number): string => {
+  const total = Math.max(0, Math.round(segundos));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+};
+
 const textoEnVivo = (tipo: TipoSensor, vivo: LecturaEnVivo): string => {
   if (tipo === 'balanza') return `Peso ${vivo.peso?.toFixed(1)} kg`;
   return `${tipo === 'oximetro' ? `SpO₂ ${vivo.spo2} %  ·  ` : ''}FC ${vivo.fc} lpm`;
@@ -89,6 +98,9 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
   const [estados, setEstados] = useState<Partial<Record<TipoSensor, Estado>>>({});
   const [enVivo, setEnVivo] = useState<Partial<Record<TipoSensor, LecturaEnVivo>>>({});
   const [manuales, setManuales] = useState<Partial<Record<TipoSensor, Manual>>>({});
+  // Prueba del escalón: el sexo solo se usa en la fórmula del resultado y no se guarda.
+  const [sexos, setSexos] = useState<Partial<Record<TipoSensor, Sexo>>>({});
+  const [progresos, setProgresos] = useState<Partial<Record<TipoSensor, ProgresoPrueba | null>>>({});
 
   // La estatura es el primer dato: mientras no se guarde, el resto de las mediciones queda bloqueado.
   const bloqueado = !!onEstatura && estaturaCm === null;
@@ -96,7 +108,10 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
   // Cada medición automática lleva un número: si la persona decide escribir los valores a mano mientras el sensor sigue
   // esperando (el tensiómetro tarda hasta 2 minutos), el número cambia y el resultado tardío se descarta.
   const medicionVigente = useRef<Partial<Record<TipoSensor, number>>>({});
-  const cancelarMedicion = (tipo: TipoSensor) => { medicionVigente.current[tipo] = (medicionVigente.current[tipo] ?? 0) + 1; };
+  const cancelarMedicion = (tipo: TipoSensor) => {
+    medicionVigente.current[tipo] = (medicionVigente.current[tipo] ?? 0) + 1;
+    sensores[tipo].cancelar?.();   // una prueba guiada detiene su cronómetro
+  };
 
   const poner = (tipo: TipoSensor, estado: Estado) => setEstados((previo) => ({ ...previo, [tipo]: estado }));
 
@@ -134,6 +149,20 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
     return () => { activo = false; clearInterval(temporizador); };
   }, [sensores, intervaloEnVivoMs]);
 
+  // Al salir de la pantalla no debe quedar una prueba corriendo en segundo plano.
+  useEffect(() => () => { TIPOS_SENSOR.forEach((tipo) => sensores[tipo].cancelar?.()); }, [sensores]);
+
+  // Progreso de las pruebas guiadas (cuenta regresiva y ritmo) mientras están en curso.
+  const guiadasEnCurso = TIPOS_SENSOR.filter((tipo) => estados[tipo]?.tipo === 'midiendo' && sensores[tipo].progreso);
+  const claveGuiadas = guiadasEnCurso.join(',');
+  useEffect(() => {
+    if (!claveGuiadas) return undefined;
+    const leer = () => setProgresos(Object.fromEntries(claveGuiadas.split(',').map((tipo) => [tipo, sensores[tipo as TipoSensor].progreso!()])));
+    leer();
+    const temporizador = setInterval(leer, 300);
+    return () => clearInterval(temporizador);
+  }, [claveGuiadas, sensores]);
+
   const registrarError = (tipo: TipoSensor, codigo: CodigoError, mensaje: string) => {
     onError({ sensor: tipo, codigo, mensaje: mensaje.slice(0, 200), ocurrido_en: new Date().toISOString() });
     poner(tipo, codigo === 'desconectado' ? { tipo: 'desconectado' } : { tipo: 'error', mensaje });
@@ -153,12 +182,54 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
         return;
       }
       onLectura(lectura);
+      // La prueba del escalón también midió la FC de recuperación: se registra para no pedirla otra vez.
+      lectura.adicionales?.filter((adicional) => validarLectura(adicional) === null).forEach(onLectura);
       poner(tipo, { tipo: 'pendiente' });
     } catch (error) {
       if (medicionVigente.current[tipo] !== numero) return;
       if (error instanceof ErrorSensor) registrarError(tipo, error.codigo, error.message);
       else registrarError(tipo, 'error', error instanceof Error && error.message ? error.message : 'Error inesperado del sensor');
     }
+  };
+
+  const elegirSexo = (tipo: TipoSensor, sexo: Sexo) => {
+    setSexos((previo) => ({ ...previo, [tipo]: sexo }));
+    sensores[tipo].configurar?.({ sexo });
+  };
+
+  const cancelarPrueba = (tipo: TipoSensor) => {
+    cancelarMedicion(tipo);
+    poner(tipo, { tipo: 'pendiente' });
+  };
+
+  // Panel de la prueba guiada: cuenta regresiva y el ritmo del metrónomo (sube, sube, baja, baja).
+  const panelProgreso = (progreso: ProgresoPrueba | null | undefined) => {
+    if (!progreso) return <Text style={estilos.progresoTexto}>Preparando la prueba…</Text>;
+    if (progreso.fase === 'espera') {
+      return (
+        <>
+          <Text style={estilos.progresoTitulo}>Siéntate y coloca el dedo en el oxímetro</Text>
+          <Text style={estilos.progresoTiempo}>{progreso.restanteS} s</Text>
+        </>
+      );
+    }
+    if (progreso.fase === 'midiendo') {
+      return <Text style={estilos.progresoTitulo}>Midiendo tu pulso… mantén la mano quieta</Text>;
+    }
+    const activo = Math.floor((progreso.transcurridoS * progreso.tiemposPorMinuto) / 60) % TIEMPOS_DEL_CICLO.length;
+    return (
+      <>
+        <Text style={estilos.progresoTitulo}>Sube y baja al ritmo</Text>
+        <Text style={estilos.progresoTiempo} accessibilityLabel="Tiempo restante">{formatearTiempo(progreso.restanteS)}</Text>
+        <View style={estilos.ritmo}>
+          {TIEMPOS_DEL_CICLO.map((palabra, i) => (
+            <View key={i} style={[estilos.tiempo, i === activo && estilos.tiempoActivo]} accessibilityState={{ selected: i === activo }}>
+              <Text style={[estilos.tiempoTexto, i === activo && estilos.tiempoTextoActivo]}>{palabra}</Text>
+            </View>
+          ))}
+        </View>
+      </>
+    );
   };
 
   // Escribir a mano cancela la medición automática que siga esperando (por ejemplo el tensiómetro, que espera hasta 2 minutos).
@@ -213,6 +284,12 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
             <Text style={estilos.titulo}>{etiqueta}</Text>
             {bloqueado && <Text style={estilos.candado} accessibilityRole="text">🔒 Primero ingresa tu estatura</Text>}
             <Text style={estilos.instruccion}>{INSTRUCCIONES[tipo]}</Text>
+            {sensores[tipo].guia && (
+              <View style={estilos.guia}>
+                <Text style={estilos.guiaTitulo}>{sensores[tipo].guia!.nombre.toUpperCase()}</Text>
+                {sensores[tipo].guia!.instrucciones.map((linea) => <Text key={linea} style={estilos.guiaLinea}>• {linea}</Text>)}
+              </View>
+            )}
 
             <View style={estilos.fila}>
               {CAMPOS[tipo].map((campo) => {
@@ -228,6 +305,26 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
                 );
               })}
             </View>
+
+            {!bloqueado && sensores[tipo].guia?.requiereSexo && estado.tipo !== 'midiendo' && (
+              <View style={estilos.sexo} accessibilityRole="radiogroup" accessibilityLabel="Sexo para la prueba">
+                <Text style={estilos.etiqueta}>SEXO (PARA CALCULAR EL RESULTADO)</Text>
+                <View style={estilos.fila}>
+                  {(['hombre', 'mujer'] as const).map((opcion) => (
+                    <TouchableOpacity
+                      key={opcion} style={[estilos.opcion, sexos[tipo] === opcion && estilos.opcionActiva]} onPress={() => elegirSexo(tipo, opcion)}
+                      accessibilityRole="radio" accessibilityState={{ selected: sexos[tipo] === opcion }}
+                      accessibilityLabel={`Sexo para la prueba: ${opcion === 'hombre' ? 'Hombre' : 'Mujer'}`}>
+                      <Text style={[estilos.opcionTexto, sexos[tipo] === opcion && estilos.opcionTextoActiva]}>{opcion === 'hombre' ? 'Hombre' : 'Mujer'}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {estado.tipo === 'midiendo' && sensores[tipo].progreso && (
+              <View style={estilos.progreso} accessibilityLabel={`Progreso ${etiqueta}`}>{panelProgreso(progresos[tipo])}</View>
+            )}
 
             {!bloqueado && sensores[tipo].enVivo && enVivo[tipo] && (
               <View style={estilos.enVivo} accessibilityLabel={`En vivo ${etiqueta}`}>
@@ -285,7 +382,12 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
               </TouchableOpacity>
             ))}
 
-            {estado.tipo === 'midiendo' ? (
+            {estado.tipo === 'midiendo' && sensores[tipo].guia ? (
+              <TouchableOpacity style={[estilos.boton, estilos.botonSecundario, { marginLeft: 0 }]} onPress={() => cancelarPrueba(tipo)}
+                                accessibilityRole="button" accessibilityLabel="Cancelar la prueba del escalón">
+                <Text style={estilos.botonSecundarioTexto}>Cancelar prueba</Text>
+              </TouchableOpacity>
+            ) : estado.tipo === 'midiendo' ? (
               <Text style={estilos.midiendo}>
                 {tipo === 'tensiometro' ? 'Esperando la medición: pulsa Start en el tensiómetro…' : 'Midiendo…'}
               </Text>
@@ -295,10 +397,19 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
                 <Text style={estilos.botonTexto}>Reintentar conexión</Text>
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity style={[estilos.boton, bloqueado && estilos.botonBloqueado]} disabled={bloqueado} onPress={() => medir(tipo)}
-                                accessibilityRole="button" accessibilityState={{ disabled: bloqueado }} accessibilityLabel={`${estado.tipo === 'error' ? 'Reintentar' : lectura ? 'Volver a medir' : 'Medir'} ${etiqueta}`}>
-                <Text style={estilos.botonTexto}>{estado.tipo === 'error' ? 'Reintentar' : lectura ? 'Volver a medir' : 'Medir'}</Text>
-              </TouchableOpacity>
+              (() => {
+                const guiada = !!sensores[tipo].guia;
+                const sinSexo = !!sensores[tipo].guia?.requiereSexo && !sexos[tipo];
+                const sinPulsar = bloqueado || sinSexo;
+                const texto = estado.tipo === 'error' ? 'Reintentar' : lectura ? (guiada ? 'Repetir la prueba' : 'Volver a medir') : (guiada ? 'Iniciar la prueba' : 'Medir');
+                const accion = guiada ? `${texto.split(' ')[0]} prueba del escalón` : `${texto} ${etiqueta}`;
+                return (
+                  <TouchableOpacity style={[estilos.boton, sinPulsar && estilos.botonBloqueado]} disabled={sinPulsar} onPress={() => medir(tipo)}
+                                    accessibilityRole="button" accessibilityState={{ disabled: sinPulsar }} accessibilityLabel={accion}>
+                    <Text style={estilos.botonTexto}>{texto}</Text>
+                  </TouchableOpacity>
+                );
+              })()
             )}
           </View>
         );
@@ -331,6 +442,23 @@ const estilos = StyleSheet.create({
   bloqueada: { opacity: 0.55, backgroundColor: '#f8fafc' },
   candado: { fontSize: 12, fontWeight: 'bold', color: '#b45309', marginBottom: 8 },
   botonBloqueado: { backgroundColor: '#cbd5e1' },
+  guia: { marginBottom: 10, padding: 10, borderRadius: 8, backgroundColor: '#fff7ed', borderWidth: 1, borderColor: '#fed7aa' },
+  guiaTitulo: { fontSize: 10, fontWeight: 'bold', color: '#c2410c', letterSpacing: 1, marginBottom: 4 },
+  guiaLinea: { fontSize: 12, color: '#475569', lineHeight: 17, marginBottom: 2 },
+  sexo: { marginBottom: 8 },
+  opcion: { paddingVertical: 8, paddingHorizontal: 18, borderRadius: 20, borderWidth: 1, borderColor: '#cbd5e1', backgroundColor: '#fff', marginRight: 8, marginTop: 6 },
+  opcionActiva: { backgroundColor: '#ea580c', borderColor: '#ea580c' },
+  opcionTexto: { fontSize: 14, fontWeight: '600', color: '#475569' },
+  opcionTextoActiva: { color: '#fff' },
+  progreso: { marginVertical: 8, padding: 12, borderRadius: 10, backgroundColor: '#fff7ed', borderWidth: 1, borderColor: '#fdba74', alignItems: 'center' },
+  progresoTitulo: { fontSize: 13, fontWeight: 'bold', color: '#9a3412', textAlign: 'center' },
+  progresoTexto: { fontSize: 13, color: '#64748b' },
+  progresoTiempo: { fontSize: 38, fontWeight: 'bold', color: '#0f172a', marginVertical: 4 },
+  ritmo: { flexDirection: 'row', marginTop: 4 },
+  tiempo: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: '#fff', borderWidth: 1, borderColor: '#fed7aa', marginHorizontal: 3 },
+  tiempoActivo: { backgroundColor: '#ea580c', borderColor: '#ea580c' },
+  tiempoTexto: { fontSize: 12, fontWeight: 'bold', color: '#9a3412' },
+  tiempoTextoActivo: { color: '#fff' },
   enlace: { color: '#475569', fontSize: 13, textDecorationLine: 'underline', marginTop: 4 },
   manual: { marginTop: 4, padding: 10, borderRadius: 8, backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0' },
   entrada: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, fontSize: 18, minWidth: 80, color: '#0f172a', backgroundColor: '#fff' },

@@ -3,7 +3,9 @@ import { Alert, type AlertButton } from 'react-native';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
 
 import App from '../app/index';
-import { crearSensores, crearSensoresSimulados, SensorOximetroPuente, type OpcionesSimulador, type Sensor } from '../sensores';
+import {
+  crearSensores, crearSensoresSimulados, SensorEscalon, SensorOximetroPuente, type OpcionesSimulador, type Sensor,
+} from '../sensores';
 
 jest.mock('@react-native-community/slider', () => 'Slider');
 // Los sensores reales (Bluetooth) no existen todavía: las pruebas usan el simulador, sin latencia y con valores fijos.
@@ -1692,4 +1694,106 @@ describe('plan de membresía por opciones', () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
+});
+
+describe('prueba de esfuerzo en la evaluación', () => {
+  const conEnvio = () => mockApi({ ...registrado(), 'POST /api/evaluaciones': { body: { status: 'success' } } });
+
+  // Con el oxímetro real la prueba de esfuerzo es la prueba del escalón; aquí, con tiempos cortos y el oxímetro simulado (128 lpm).
+  const usarPruebaDelEscalon = () => {
+    const sensores = usarSensores();
+    sensores.prueba_esfuerzo = new SensorEscalon(sensores.oximetro_recuperacion, { duracionS: 0.2, esperaS: 0.1, pasoMs: 20 });
+  };
+
+  const enviarSinLoQueFalta = async () => {
+    await fireEvent.press(screen.getByText('Continuar →'));
+    await botonDeAlerta('Faltan mediciones', 'Continuar sin ellas').onPress?.();
+    await screen.findByText('PASO 3 - TU OBJETIVO');
+    await fireEvent.press(screen.getByLabelText('3 días a la semana'));
+    await fireEvent.press(screen.getByText('Continuar →'));
+    await fireEvent.press(screen.getByText('Continuar →'));
+    await fireEvent.press(screen.getByText('Registrar mi ingreso'));
+    await waitFor(() => expect(llamadas('POST /api/evaluaciones')).toHaveLength(1));
+    return JSON.parse(llamadas('POST /api/evaluaciones')[0][1].body);
+  };
+
+  test('el VO₂ máx escrito a mano viaja en la evaluación y queda marcado como manual', async () => {
+    // Arrange
+    conEnvio();
+    await llegarAlPaso2();
+    await fireEvent.press(screen.getByLabelText('Ingresar manualmente Prueba de esfuerzo'));
+    await fireEvent.changeText(screen.getByLabelText('VO₂ MÁX manual'), '45,5');
+    await fireEvent.press(screen.getByLabelText('Registrar valores de Prueba de esfuerzo'));
+    await screen.findByText('✓ Medición terminada correctamente');
+
+    // Act
+    const cuerpo = await enviarSinLoQueFalta();
+
+    // Assert
+    expect(cuerpo.mediciones.vo2Max).toBe('45.5');
+    expect(cuerpo.dispositivos.prueba_esfuerzo).toMatchObject({ id: 'manual', calibracion: 'desconocida' });
+  });
+
+  test('la prueba del escalón entrega el VO₂ máx estimado y la FC de recuperación en la evaluación', async () => {
+    // Arrange
+    usarPruebaDelEscalon();
+    conEnvio();
+    await llegarAlPaso2();
+
+    // Act
+    await fireEvent.press(screen.getByLabelText('Sexo para la prueba: Hombre'));
+    await fireEvent.press(screen.getByLabelText('Iniciar prueba del escalón'));
+    await waitFor(() => expect(screen.getAllByText('✓ Medición terminada correctamente')).toHaveLength(2), { timeout: 5000 });
+    const cuerpo = await enviarSinLoQueFalta();
+
+    // Assert: 111,33 − 0,42 × 128 = 57,6
+    expect(cuerpo.mediciones).toMatchObject({ vo2Max: '57.6', fcRecup: 128 });
+    expect(cuerpo.dispositivos.prueba_esfuerzo).toMatchObject({ id: 'prueba-escalon' });
+    expect(cuerpo.dispositivos.oximetro_recuperacion).toMatchObject({ id: 'SIM-OXIMETRO_RECUPERACION' });
+  });
+
+  test('para una mujer usa la fórmula de las mujeres con el mismo pulso', async () => {
+    // Arrange
+    usarPruebaDelEscalon();
+    conEnvio();
+    await llegarAlPaso2();
+
+    // Act
+    await fireEvent.press(screen.getByLabelText('Sexo para la prueba: Mujer'));
+    await fireEvent.press(screen.getByLabelText('Iniciar prueba del escalón'));
+    await waitFor(() => expect(screen.getAllByText('✓ Medición terminada correctamente')).toHaveLength(2), { timeout: 5000 });
+    const cuerpo = await enviarSinLoQueFalta();
+
+    // Assert: 65,81 − 0,1847 × 128 = 42,2
+    expect(cuerpo.mediciones.vo2Max).toBe('42.2');
+  });
+
+  test('el sexo con el que se calculó no se envía al servidor', async () => {
+    // Arrange
+    usarPruebaDelEscalon();
+    conEnvio();
+    await llegarAlPaso2();
+    await fireEvent.press(screen.getByLabelText('Sexo para la prueba: Mujer'));
+    await fireEvent.press(screen.getByLabelText('Iniciar prueba del escalón'));
+    await waitFor(() => expect(screen.getAllByText('✓ Medición terminada correctamente')).toHaveLength(2), { timeout: 5000 });
+
+    // Act
+    const cuerpo = await enviarSinLoQueFalta();
+
+    // Assert
+    expect(JSON.stringify(cuerpo)).not.toMatch(/sexo|hombre|mujer/i);
+  });
+
+  test('con los sensores simulados la prueba de esfuerzo sigue midiéndose con «Medir» como antes', async () => {
+    // Arrange
+    mockApi(registrado());
+    await llegarAlPaso2();
+
+    // Act
+    await medir('Prueba de esfuerzo');
+
+    // Assert
+    expect(await screen.findByText('✓ Medición terminada correctamente')).toBeTruthy();
+    expect(screen.queryByLabelText('Sexo para la prueba')).toBeNull();
+  });
 });

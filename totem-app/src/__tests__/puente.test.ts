@@ -1,4 +1,4 @@
-import { crearSensores, ErrorSensor, SensorOximetroPuente, SensorSimulado } from '../sensores';
+import { crearSensores, ErrorSensor, SensorEscalon, SensorOximetroPuente, SensorSimulado } from '../sensores';
 
 const CONFIG = { url: 'http://puente:8765' };
 
@@ -232,7 +232,8 @@ describe('crearSensores con el oxímetro real', () => {
     expect(sensores.oximetro_recuperacion).toBeInstanceOf(SensorOximetroPuente);
     expect(sensores.tensiometro).toBeInstanceOf(SensorSimulado);
     expect(sensores.balanza).toBeInstanceOf(SensorSimulado);
-    expect(sensores.prueba_esfuerzo).toBeInstanceOf(SensorSimulado);
+    // con el oxímetro real la prueba de esfuerzo es la prueba del escalón, que mide el pulso con ese oxímetro
+    expect(sensores.prueba_esfuerzo).toBeInstanceOf(SensorEscalon);
   });
 
   test('usa la URL y la clave configuradas, o localhost:8765 por defecto', async () => {

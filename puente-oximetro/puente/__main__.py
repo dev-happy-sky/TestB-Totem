@@ -20,7 +20,7 @@ def main() -> int:
         return 1
     origenes = [o.strip() for o in os.getenv("PUENTE_ORIGENES", "").split(",") if o.strip()]
     app = crear_app(LectorOximetro(direccion), token=token, origenes=origenes or None,
-                    timeout_s=float(os.getenv("PUENTE_TIMEOUT_S", "20")))
+                    timeout_s=float(os.getenv("PUENTE_TIMEOUT_S", "60")))
     uvicorn.run(app, host=host, port=int(os.getenv("PUENTE_PORT", "8765")))
     return 0
 

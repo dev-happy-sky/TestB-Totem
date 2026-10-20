@@ -23,6 +23,8 @@ export type Lectura = {
   dispositivo: { id: string; calibracion: Calibracion };
   /** Instante ISO en que se tomó la medición (R.58). */
   capturadoEn: string;
+  /** Lecturas de otros sensores que se tomaron en la misma prueba (la prueba del escalón mide la FC de recuperación). */
+  adicionales?: Lectura[];
 };
 
 export type ErrorMedicion = {
@@ -50,6 +52,26 @@ export type LecturaEnVivo = {
   motivo?: 'desconectado' | 'sin_senal' | 'sin_dedo' | 'sin_carga';
 };
 
+export type Sexo = 'hombre' | 'mujer';
+
+/** Prueba guiada que dura varios minutos (prueba del escalón): la pantalla muestra las instrucciones, el ritmo y la cuenta regresiva. */
+export type GuiaPrueba = {
+  nombre: string;
+  duracionS: number;
+  instrucciones: string[];
+  /** La fórmula del resultado depende del sexo: se pregunta antes de empezar (no se guarda). */
+  requiereSexo: boolean;
+};
+
+export type ProgresoPrueba = {
+  /** `prueba`: sube y baja el escalón; `espera`: sentarse y colocar el dedo; `midiendo`: el oxímetro mide el pulso. */
+  fase: 'prueba' | 'espera' | 'midiendo';
+  restanteS: number;
+  transcurridoS: number;
+  /** Tiempos por minuto del metrónomo (4 por ciclo: sube, sube, baja, baja). */
+  tiemposPorMinuto: number;
+};
+
 export interface Sensor {
   readonly tipo: TipoSensor;
   /** ¿El sensor está conectado y listo? (R.52). */
@@ -58,6 +80,12 @@ export interface Sensor {
   medir(): Promise<Lectura>;
   /** Opcional: lectura continua para mostrar en pantalla. Nunca lanza: si falla, devuelve `valida: false`. */
   enVivo?(): Promise<LecturaEnVivo>;
+  /** Opcional: solo las pruebas guiadas. */
+  readonly guia?: GuiaPrueba;
+  configurar?(opciones: { sexo: Sexo }): void;
+  progreso?(): ProgresoPrueba | null;
+  /** Detiene una medición en curso (la persona decidió escribir los valores a mano, o salió de la pantalla). */
+  cancelar?(): void;
 }
 
 export type Sensores = Record<TipoSensor, Sensor>;

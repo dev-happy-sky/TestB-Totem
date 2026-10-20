@@ -1,4 +1,4 @@
-import { crearSensores, ErrorSensor, SensorBasculaPuente, SensorOximetroPuente, SensorSimulado } from '../sensores';
+import { crearSensores, ErrorSensor, SensorBasculaPuente, SensorEscalon, SensorOximetroPuente, SensorSimulado } from '../sensores';
 
 const CONFIG = { url: 'http://bascula:8766' };
 
@@ -185,7 +185,7 @@ describe('crearSensores con la báscula real', () => {
     expect(sensores.oximetro).toBeInstanceOf(SensorOximetroPuente);
     expect(sensores.oximetro_recuperacion).toBeInstanceOf(SensorOximetroPuente);
     expect(sensores.balanza).toBeInstanceOf(SensorBasculaPuente);
-    expect(sensores.prueba_esfuerzo).toBeInstanceOf(SensorSimulado);
+    expect(sensores.prueba_esfuerzo).toBeInstanceOf(SensorEscalon);
   });
 
   test('usa la URL y la clave configuradas, o localhost:8766 por defecto', async () => {

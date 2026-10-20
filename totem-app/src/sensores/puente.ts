@@ -10,7 +10,7 @@ import {
 export type ConfiguracionPuente = {
   url: string;
   clave?: string;
-  /** Debe superar el tiempo máximo de espera del puente (20 s por defecto). */
+  /** Debe superar el tiempo máximo de espera del puente (60 s por defecto). */
   timeoutMedicionMs?: number;
   timeoutEstadoMs?: number;
 };
@@ -93,7 +93,7 @@ export class SensorOximetroPuente implements Sensor {
   }
 
   async medir(): Promise<Lectura> {
-    const medicion = await medirPorPuente<RespuestaMedicion>(this.config, 30000, { sensor: 'El oxímetro', puente: 'el puente del oxímetro' });
+    const medicion = await medirPorPuente<RespuestaMedicion>(this.config, 70000, { sensor: 'El oxímetro', puente: 'el puente del oxímetro' });
     const valores = this.tipo === 'oximetro' ? { spo2: medicion.spo2, fcReposo: medicion.fc } : { fcRecup: medicion.fc };
     return { sensor: this.tipo, valores, dispositivo: medicion.dispositivo, capturadoEn: medicion.capturado_en };
   }
