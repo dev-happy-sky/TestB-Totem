@@ -9,7 +9,7 @@ from puente.protocolo import NOTIFY_UUID, parsear_paquete
 
 logger = logging.getLogger("puente")
 
-REINTENTO_CONEXION_S = 3.0
+REINTENTO_CONEXION_S = 1.0
 
 
 def cliente_bleak(direccion: str):

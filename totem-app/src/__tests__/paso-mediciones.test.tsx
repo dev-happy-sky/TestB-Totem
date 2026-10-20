@@ -4,7 +4,8 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react-nativ
 
 import PasoMediciones from '../components/paso-mediciones';
 import {
-  crearSensoresSimulados, ErrorSensor, type ErrorMedicion, type Lectura, type LecturaEnVivo, type Sensor, type Sensores, type TipoSensor,
+  crearSensoresSimulados, ErrorSensor, GUIA_ESCALON, type ErrorMedicion, type Lectura, type LecturaEnVivo, type ProgresoPrueba, type Sensor,
+  type Sensores, type TipoSensor,
 } from '../sensores';
 
 jest.mock('@react-native-community/slider', () => 'Slider');
@@ -236,7 +237,7 @@ describe('registro manual del oxímetro', () => {
   const abrir = async (nombre = 'Oxímetro') => fireEvent.press(screen.getByLabelText(`Ingresar manualmente ${nombre}`));
   const escribir = async (etiqueta: string, texto: string) => fireEvent.changeText(screen.getByLabelText(etiqueta), texto);
 
-  test('el tensiómetro, los oxímetros y la balanza ofrecen ingresar los valores a mano', async () => {
+  test('el tensiómetro, los oxímetros, la balanza y la prueba de esfuerzo ofrecen ingresar los valores a mano', async () => {
     // Arrange / Act
     await montar();
 
@@ -245,7 +246,7 @@ describe('registro manual del oxímetro', () => {
     expect(screen.getByLabelText('Ingresar manualmente Oxímetro (FC de recuperación)')).toBeTruthy();
     expect(screen.getByLabelText('Ingresar manualmente Tensiómetro')).toBeTruthy();
     expect(screen.getByLabelText('Ingresar manualmente Balanza')).toBeTruthy();
-    expect(screen.queryByLabelText('Ingresar manualmente Prueba de esfuerzo')).toBeNull();
+    expect(screen.getByLabelText('Ingresar manualmente Prueba de esfuerzo')).toBeTruthy();
   });
 
   test('registra SpO₂ y FC escritos a mano como una lectura del dispositivo "manual"', async () => {
@@ -863,5 +864,305 @@ describe('ingreso manual mientras el sensor espera', () => {
     // Assert
     expect(alLeer).toHaveBeenCalledTimes(1);
     expect(alLeer).toHaveBeenCalledWith(LECTURA_AUTO);
+  });
+});
+
+describe('prueba de esfuerzo: ingreso manual del VO₂ máx', () => {
+  const abrir = async () => {
+    const montado = await montar();
+    await fireEvent.press(screen.getByLabelText('Ingresar manualmente Prueba de esfuerzo'));
+    return montado;
+  };
+
+  test('registra el VO₂ máx escrito a mano (acepta coma) como dispositivo manual', async () => {
+    // Arrange
+    const { alLeer } = await abrir();
+
+    // Act
+    await fireEvent.changeText(screen.getByLabelText('VO₂ MÁX manual'), '45,5');
+    await fireEvent.press(screen.getByLabelText('Registrar valores de Prueba de esfuerzo'));
+
+    // Assert
+    await waitFor(() => expect(alLeer).toHaveBeenCalledTimes(1));
+    expect(alLeer.mock.calls[0][0]).toMatchObject({
+      sensor: 'prueba_esfuerzo', valores: { vo2Max: '45.5' }, dispositivo: { id: 'manual', calibracion: 'desconocida' },
+    });
+  });
+
+  test.each([['', 'ingresa un número'], ['abc', 'ingresa un número'], ['3', 'fuera de lo posible'], ['150', 'fuera de lo posible']])(
+    'un valor inválido (%j) se rechaza', async (texto, motivo) => {
+      // Arrange
+      const { alLeer } = await abrir();
+
+      // Act
+      await fireEvent.changeText(screen.getByLabelText('VO₂ MÁX manual'), texto);
+      await fireEvent.press(screen.getByLabelText('Registrar valores de Prueba de esfuerzo'));
+
+      // Assert
+      expect((await screen.findByRole('alert')).props.children).toContain(motivo);
+      expect(alLeer).not.toHaveBeenCalled();
+    });
+
+  test('con sensores simulados (sin prueba guiada) no se pregunta el sexo ni se muestran instrucciones del escalón', async () => {
+    // Arrange / Act
+    await montar();
+
+    // Assert
+    expect(screen.queryByLabelText('Sexo para la prueba')).toBeNull();
+    expect(screen.queryByText(/PRUEBA DEL ESCALÓN/)).toBeNull();
+  });
+});
+
+describe('prueba de esfuerzo guiada (prueba del escalón)', () => {
+  const FC = (fc: number): Lectura => ({
+    sensor: 'oximetro_recuperacion', valores: { fcRecup: fc }, dispositivo: { id: 'AA:BB', calibracion: 'desconocida' }, capturadoEn: '2026-10-19T10:00:00Z',
+  });
+  const VO2 = (adicionales: Lectura[] = [FC(150)]): Lectura => ({
+    sensor: 'prueba_esfuerzo', valores: { vo2Max: '48.3' }, dispositivo: { id: 'prueba-escalon', calibracion: 'desconocida' },
+    capturadoEn: '2026-10-19T10:00:00Z', adicionales,
+  });
+
+  // Una prueba guiada controlada desde la prueba: la pantalla ve el progreso que se le fije y el resultado que se le entregue.
+  const crearGuiada = () => {
+    let progreso: ProgresoPrueba | null = null;
+    let terminar: (l: Lectura) => void = () => {};
+    let fallar: (e: Error) => void = () => {};
+    const sensor = {
+      tipo: 'prueba_esfuerzo' as const, guia: GUIA_ESCALON,
+      disponible: async () => true,
+      medir: () => new Promise<Lectura>((resolver, rechazar) => { terminar = resolver; fallar = rechazar; }),
+      configurar: jest.fn(), cancelar: jest.fn(), progreso: () => progreso,
+    };
+    return {
+      sensor, fijar: (p: ProgresoPrueba | null) => { progreso = p; },
+      terminar: (l: Lectura) => terminar(l), fallar: (e: Error) => fallar(e),
+    };
+  };
+
+  const montarGuiada = async () => {
+    const guiada = crearGuiada();
+    const simulados = crearSensoresSimulados({ latenciaMs: 0, azar: () => 0.5 });
+    const alLeer = jest.fn();
+    const alFallar = jest.fn();
+    await render(<Contenedor sensores={{ ...simulados, prueba_esfuerzo: guiada.sensor as unknown as Sensor }} alLeer={alLeer} alFallar={alFallar} />);
+    return { ...guiada, alLeer, alFallar };
+  };
+
+  const empezar = async (sexo: 'Hombre' | 'Mujer' = 'Hombre') => {
+    await fireEvent.press(screen.getByLabelText(`Sexo para la prueba: ${sexo}`));
+    const pulsacion = fireEvent.press(screen.getByLabelText('Iniciar prueba del escalón'));
+    await screen.findByLabelText('Progreso Prueba de esfuerzo');
+    return { pulsacion };   // envuelta: devolver la promesa tal cual haría que `await` espere a que termine la prueba
+  };
+
+  const prueba = (restanteS: number, transcurridoS: number, tiemposPorMinuto = 96): ProgresoPrueba =>
+    ({ fase: 'prueba', restanteS, transcurridoS, tiemposPorMinuto });
+
+  test('muestra las instrucciones de la prueba del escalón', async () => {
+    // Arrange / Act
+    await montarGuiada();
+
+    // Assert
+    expect(screen.getByText('PRUEBA DEL ESCALÓN')).toBeTruthy();
+    expect(screen.getByText(/escalón o banco de unos 40 cm/)).toBeTruthy();
+    expect(screen.getByText(/durante 3 minutos/)).toBeTruthy();
+  });
+
+  test('pide el sexo y no deja iniciar hasta elegirlo', async () => {
+    // Arrange
+    const { sensor } = await montarGuiada();
+
+    // Assert
+    expect(screen.getByLabelText('Sexo para la prueba: Hombre')).toBeTruthy();
+    expect(screen.getByLabelText('Sexo para la prueba: Mujer')).toBeTruthy();
+    expect(screen.getByLabelText('Iniciar prueba del escalón').props.accessibilityState.disabled).toBe(true);
+    await fireEvent.press(screen.getByLabelText('Iniciar prueba del escalón'));
+    expect(screen.queryByLabelText('Progreso Prueba de esfuerzo')).toBeNull();
+    expect(sensor.configurar).not.toHaveBeenCalled();
+  });
+
+  test('elegir el sexo lo informa a la prueba y habilita el botón', async () => {
+    // Arrange
+    const { sensor } = await montarGuiada();
+
+    // Act
+    await fireEvent.press(screen.getByLabelText('Sexo para la prueba: Mujer'));
+
+    // Assert
+    expect(sensor.configurar).toHaveBeenCalledWith({ sexo: 'mujer' });
+    expect(screen.getByLabelText('Sexo para la prueba: Mujer').props.accessibilityState.selected).toBe(true);
+    expect(screen.getByLabelText('Sexo para la prueba: Hombre').props.accessibilityState.selected).toBe(false);
+    expect(screen.getByLabelText('Iniciar prueba del escalón').props.accessibilityState.disabled).toBe(false);
+  });
+
+  test('durante la prueba muestra la cuenta regresiva y marca el tiempo del ritmo que toca', async () => {
+    // Arrange
+    const { fijar, terminar, alLeer } = await montarGuiada();
+    fijar(prueba(165, 15));                               // 15 s a 96 tiempos/min = 24 tiempos → índice 24 % 4 = 0 → SUBE
+    const { pulsacion } = await empezar();
+
+    // Assert
+    await waitFor(() => expect(screen.getByLabelText('Tiempo restante')).toHaveTextContent('2:45'));
+    expect(screen.getByText('Sube y baja al ritmo')).toBeTruthy();
+    expect(screen.getAllByText('SUBE')).toHaveLength(2);
+    expect(screen.getAllByText('BAJA')).toHaveLength(2);
+    const activos = screen.getAllByText(/SUBE|BAJA/).filter((t) => t.props.style && JSON.stringify(t.props.style).includes('#fff'));
+    expect(activos.length).toBeGreaterThanOrEqual(1);
+    terminar(VO2());
+    await pulsacion;
+    expect(alLeer).toHaveBeenCalled();
+  });
+
+  test('la cuenta regresiva se actualiza con el avance de la prueba', async () => {
+    // Arrange
+    const { fijar, terminar } = await montarGuiada();
+    fijar(prueba(180, 0));
+    const { pulsacion } = await empezar();
+    await waitFor(() => expect(screen.getByLabelText('Tiempo restante')).toHaveTextContent('3:00'));
+
+    // Act
+    fijar(prueba(59, 121));
+
+    // Assert
+    await waitFor(() => expect(screen.getByLabelText('Tiempo restante')).toHaveTextContent('0:59'));
+    terminar(VO2());
+    await pulsacion;
+  });
+
+  test('al terminar la prueba pide sentarse y poner el dedo, y luego avisa que mide el pulso', async () => {
+    // Arrange
+    const { fijar, terminar } = await montarGuiada();
+    fijar(prueba(1, 179));
+    const { pulsacion } = await empezar();
+
+    // Act / Assert
+    fijar({ fase: 'espera', restanteS: 4, transcurridoS: 180, tiemposPorMinuto: 96 });
+    expect(await screen.findByText('Siéntate y coloca el dedo en el oxímetro')).toBeTruthy();
+    expect(screen.getByText('4 s')).toBeTruthy();
+    fijar({ fase: 'midiendo', restanteS: 0, transcurridoS: 180, tiemposPorMinuto: 96 });
+    expect(await screen.findByText(/Midiendo tu pulso/)).toBeTruthy();
+    terminar(VO2());
+    await pulsacion;
+  });
+
+  test('mientras corre no se puede volver a iniciar y aparece «Cancelar prueba»', async () => {
+    // Arrange
+    const { fijar, terminar } = await montarGuiada();
+    fijar(prueba(100, 80));
+
+    // Act
+    const { pulsacion } = await empezar();
+
+    // Assert
+    expect(screen.queryByLabelText('Iniciar prueba del escalón')).toBeNull();
+    expect(screen.getByLabelText('Cancelar la prueba del escalón')).toBeTruthy();
+    expect(screen.queryByLabelText('Sexo para la prueba')).toBeNull();
+    terminar(VO2());
+    await pulsacion;
+  });
+
+  test('al terminar registra el VO₂ máx y también la FC de recuperación que midió', async () => {
+    // Arrange
+    const { terminar, alLeer } = await montarGuiada();
+    const { pulsacion } = await empezar();
+
+    // Act
+    terminar(VO2([FC(142)]));
+    await pulsacion;
+
+    // Assert: terminan las dos tarjetas, la de la prueba y la de la FC de recuperación
+    expect(await screen.findAllByText('✓ Medición terminada correctamente')).toHaveLength(2);
+    expect(alLeer).toHaveBeenCalledTimes(2);
+    expect(alLeer.mock.calls[0][0]).toMatchObject({ sensor: 'prueba_esfuerzo', valores: { vo2Max: '48.3' } });
+    expect(alLeer.mock.calls[1][0]).toMatchObject({ sensor: 'oximetro_recuperacion', valores: { fcRecup: 142 } });
+    expect(screen.getByLabelText('Repetir prueba del escalón')).toBeTruthy();
+  });
+
+  test('una FC de recuperación adicional imposible no se registra, pero el resultado sí', async () => {
+    // Arrange
+    const { terminar, alLeer } = await montarGuiada();
+    const { pulsacion } = await empezar();
+
+    // Act
+    terminar(VO2([FC(999)]));
+    await pulsacion;
+
+    // Assert
+    await waitFor(() => expect(alLeer).toHaveBeenCalledTimes(1));
+    expect(alLeer.mock.calls[0][0].sensor).toBe('prueba_esfuerzo');
+  });
+
+  test('cancelar detiene la prueba, no registra nada y permite volver a empezar', async () => {
+    // Arrange
+    const { sensor, terminar, alLeer } = await montarGuiada();
+    const { pulsacion } = await empezar();
+
+    // Act
+    await fireEvent.press(screen.getByLabelText('Cancelar la prueba del escalón'));
+
+    // Assert
+    expect(sensor.cancelar).toHaveBeenCalled();
+    expect(screen.queryByLabelText('Progreso Prueba de esfuerzo')).toBeNull();
+    expect(screen.getByLabelText('Iniciar prueba del escalón')).toBeTruthy();
+    terminar(VO2());                                   // el resultado tardío de la prueba cancelada se descarta
+    await pulsacion;
+    expect(alLeer).not.toHaveBeenCalled();
+  });
+
+  test('escribir el VO₂ a mano durante la prueba la cancela y el resultado tardío no pisa lo escrito', async () => {
+    // Arrange
+    const { sensor, terminar, alLeer } = await montarGuiada();
+    const { pulsacion } = await empezar();
+
+    // Act
+    await fireEvent.press(screen.getByLabelText('Ingresar manualmente Prueba de esfuerzo'));
+    expect(sensor.cancelar).toHaveBeenCalled();
+    await fireEvent.changeText(screen.getByLabelText('VO₂ MÁX manual'), '40');
+    await fireEvent.press(screen.getByLabelText('Registrar valores de Prueba de esfuerzo'));
+    await waitFor(() => expect(alLeer).toHaveBeenCalledTimes(1));
+    terminar(VO2());
+    await pulsacion;
+
+    // Assert
+    expect(alLeer).toHaveBeenCalledTimes(1);
+    expect(alLeer.mock.calls[0][0]).toMatchObject({ valores: { vo2Max: '40.0' }, dispositivo: { id: 'manual' } });
+  });
+
+  test('si falla (por ejemplo, sin dedo en el oxímetro) muestra el motivo, lo registra y permite reintentar', async () => {
+    // Arrange
+    const { fallar, alFallar } = await montarGuiada();
+    const { pulsacion } = await empezar();
+
+    // Act
+    fallar(new ErrorSensor('lectura_invalida', 'No se detecta el dedo'));
+    await pulsacion;
+
+    // Assert
+    expect((await screen.findByRole('alert')).props.children.join('')).toContain('No se detecta el dedo');
+    expect(alFallar).toHaveBeenCalledWith(expect.objectContaining({ sensor: 'prueba_esfuerzo', codigo: 'lectura_invalida' }));
+    expect(screen.getByLabelText('Reintentar prueba del escalón')).toBeTruthy();
+  });
+
+  test('al salir de la pantalla se cancela la prueba para que no siga corriendo', async () => {
+    // Arrange
+    const { sensor, terminar } = await montarGuiada();
+    const { pulsacion } = await empezar();
+
+    // Act
+    await screen.unmount();
+    terminar(VO2());
+    await pulsacion;
+
+    // Assert
+    expect(sensor.cancelar).toHaveBeenCalled();
+  });
+
+  test('las demás tarjetas no piden el sexo ni muestran instrucciones de la prueba', async () => {
+    // Arrange / Act
+    await montarGuiada();
+
+    // Assert
+    expect(screen.getAllByLabelText('Sexo para la prueba')).toHaveLength(1);
+    expect(screen.getAllByText('PRUEBA DEL ESCALÓN')).toHaveLength(1);
   });
 });

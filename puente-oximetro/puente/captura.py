@@ -14,7 +14,7 @@ from puente.protocolo import Muestra
 MUESTRAS_ESTABLES = 5       # muestras válidas consecutivas que se necesitan
 TOLERANCIA_SPO2 = 2         # variación máxima (puntos de %) entre esas muestras
 TOLERANCIA_FC = 5           # variación máxima (lpm) entre esas muestras
-TIMEOUT_POR_DEFECTO_S = 20.0
+TIMEOUT_POR_DEFECTO_S = 60.0
 MAXIMO_RETENIDO = 200       # muestras en memoria
 
 

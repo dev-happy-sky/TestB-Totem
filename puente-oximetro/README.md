@@ -30,7 +30,7 @@ En Windows (PowerShell): `$env:OXIMETRO_ID="..."; python -m puente`.
 | `PUENTE_PORT` | `8765` | Puerto |
 | `PUENTE_TOKEN` | — | Clave que la app envía en `X-Puente-Key`. **Obligatoria si `PUENTE_HOST` no es localhost** |
 | `PUENTE_ORIGENES` | — | Orígenes CORS permitidos (solo si la app corre como web), separados por coma |
-| `PUENTE_TIMEOUT_S` | `20` | Tiempo máximo de una medición |
+| `PUENTE_TIMEOUT_S` | `60` | Tiempo máximo de una medición |
 
 ## Endpoints
 

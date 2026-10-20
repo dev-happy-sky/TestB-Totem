@@ -265,4 +265,4 @@ def test_los_parametros_provisionales_son_los_documentados_en_el_readme():
     from puente import captura
 
     # Assert
-    assert (captura.MUESTRAS_ESTABLES, captura.TOLERANCIA_SPO2, captura.TOLERANCIA_FC, captura.TIMEOUT_POR_DEFECTO_S) == (5, 2, 5, 20.0)
+    assert (captura.MUESTRAS_ESTABLES, captura.TOLERANCIA_SPO2, captura.TOLERANCIA_FC, captura.TIMEOUT_POR_DEFECTO_S) == (5, 2, 5, 60.0)
