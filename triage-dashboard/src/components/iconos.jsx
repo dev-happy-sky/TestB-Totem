@@ -42,3 +42,9 @@ export function IconoReloj({ className }) {
 export function IconoFlecha({ className }) {
   return (<svg {...base} className={className}><path d="M5 12h14M13 6l6 6-6 6" /></svg>);
 }
+export function IconoExterno({ className }) {
+  return (<svg {...base} className={className}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3" /></svg>);
+}
+export function IconoNoticias({ className }) {
+  return (<svg {...base} className={className}><path d="M4 4h12v16H6a2 2 0 0 1-2-2V4Z" /><path d="M16 8h3a1 1 0 0 1 1 1v9a2 2 0 0 1-2 2M8 8h4M8 12h4M8 16h4" /></svg>);
+}
