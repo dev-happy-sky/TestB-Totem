@@ -434,7 +434,7 @@ export default function App() {
         <Text style={[styles.label, { marginTop: 30, marginBottom: 15 }]}>EXPERIENCIA</Text>
         <View style={styles.chipContainer}>{listaExperiencia.map(exp => (<TouchableOpacity key={exp} style={[styles.chip, experiencia === exp && styles.chipActive]} onPress={() => setExperiencia(exp)}><Text style={[styles.chipText, experiencia === exp && styles.chipTextActive]}>{exp}</Text></TouchableOpacity>))}</View>
         <View style={styles.sliderHeader}><Text style={styles.label}>DURACIÓN DE LA SESIÓN</Text><Text style={styles.sliderValue}> — {duracion} MIN</Text></View>
-        <Slider style={{ width: '100%', height: 40, marginTop: 10 }} minimumValue={30} maximumValue={120} step={10} value={duracion} onValueChange={(valor) => setDuracion(valor)} minimumTrackTintColor="#ea580c" maximumTrackTintColor="#e2e8f0" thumbTintColor="#ea580c"/>
+        <Slider style={{ width: '100%', height: 40, marginTop: 10 }} minimumValue={30} maximumValue={120} step={10} value={duracion} onValueChange={(valor) => setDuracion(valor)} minimumTrackTintColor="#002c5f" maximumTrackTintColor="#e2e8f0" thumbTintColor="#002c5f"/>
         <View style={styles.sliderLabels}><Text style={styles.sliderLabelText}>30 min</Text><Text style={styles.sliderLabelText}>2 h</Text></View>
         <Text style={[styles.label, { marginTop: 30, marginBottom: 15 }]}>DÍAS A LA SEMANA QUE PUEDES ENTRENAR</Text>
         <View style={styles.chipContainer}>
@@ -515,6 +515,10 @@ export default function App() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
+        <View style={styles.brandRow}>
+          <View style={styles.brandLogo}><Text style={styles.brandLogoText}>T</Text></View>
+          <Text style={styles.brandName}>TÓTEM<Text style={styles.brandNameLight}> FIT</Text></Text>
+        </View>
         <View style={styles.progressContainer}>
           {nombresPasos.map((nombre, index) => (
             <View key={index} style={styles.progressStep}>
@@ -562,18 +566,23 @@ export default function App() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc' },
   header: { padding: 20, paddingTop: 40, borderBottomWidth: 1, borderBottomColor: '#e2e8f0', backgroundColor: '#fff' },
+  brandRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  brandLogo: { width: 32, height: 32, borderRadius: 9, backgroundColor: '#002c5f', justifyContent: 'center', alignItems: 'center', marginRight: 8 },
+  brandLogoText: { color: '#ffd100', fontWeight: '900', fontSize: 18 },
+  brandName: { fontSize: 18, fontWeight: '900', color: '#002c5f', letterSpacing: 0.5 },
+  brandNameLight: { fontWeight: '400', color: '#64748b' },
   progressContainer: { flexDirection: 'row', justifyContent: 'space-between' },
   progressStep: { flex: 1, marginHorizontal: 2 },
   progressBar: { height: 4, borderRadius: 2, marginBottom: 8 },
-  progressActive: { backgroundColor: '#ea580c' },
+  progressActive: { backgroundColor: '#002c5f' },
   progressInactive: { backgroundColor: '#f1f5f9' },
   progressText: { fontSize: 10, textAlign: 'center', fontWeight: 'bold' },
-  textActive: { color: '#ea580c' },
+  textActive: { color: '#002c5f' },
   textInactive: { color: '#94a3b8' },
   
   content: { flex: 1, padding: 30 },
   stepContainer: { paddingBottom: 40 },
-  stepSubtitle: { color: '#ea580c', fontWeight: 'bold', fontSize: 12, letterSpacing: 1, marginBottom: 8, textTransform: 'uppercase' },
+  stepSubtitle: { color: '#002c5f', fontWeight: 'bold', fontSize: 12, letterSpacing: 1, marginBottom: 8, textTransform: 'uppercase' },
   stepTitle: { fontSize: 28, fontWeight: 'bold', color: '#0f172a', marginBottom: 10 },
   stepDescription: { fontSize: 16, color: '#64748b', marginBottom: 30 },
   
@@ -582,7 +591,7 @@ const styles = StyleSheet.create({
   infoBanner: { backgroundColor: '#f1f5f9', padding: 16, borderRadius: 12, marginBottom: 20 },
   infoTitle: { fontSize: 16, fontWeight: 'bold', color: '#1e293b', marginBottom: 4 },
   infoText: { color: '#475569', fontSize: 14, lineHeight: 20 },
-  scanCard: { backgroundColor: '#fff5f0', padding: 20, borderRadius: 12, borderWidth: 1, borderColor: '#fed7aa', marginBottom: 20 },
+  scanCard: { backgroundColor: '#eef3fb', padding: 20, borderRadius: 12, borderWidth: 1, borderColor: '#aec6e6', marginBottom: 20 },
   scanCardTitle: { fontSize: 16, fontWeight: 'bold', color: '#1e293b' },
   scanCardDesc: { color: '#64748b', marginTop: 4 },
   dividerText: { textAlign: 'center', color: '#94a3b8', fontSize: 12, fontWeight: 'bold', marginVertical: 20 },
@@ -592,7 +601,7 @@ const styles = StyleSheet.create({
   input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', padding: 15, borderRadius: 10, fontSize: 16, color: '#1e293b', marginTop: 8 },
   opcionesPlan: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 },
   opcionPlan: { paddingVertical: 12, paddingHorizontal: 22, borderRadius: 24, borderWidth: 1, borderColor: '#cbd5e1', backgroundColor: '#fff', marginRight: 10, marginBottom: 10 },
-  opcionPlanActiva: { backgroundColor: '#ea580c', borderColor: '#ea580c' },
+  opcionPlanActiva: { backgroundColor: '#002c5f', borderColor: '#002c5f' },
   opcionPlanTexto: { fontSize: 16, fontWeight: '600', color: '#475569' },
   opcionPlanTextoActivo: { color: '#fff' },
   row: { flexDirection: 'row' },
@@ -600,11 +609,11 @@ const styles = StyleSheet.create({
   
   chipContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   chip: { backgroundColor: '#fff', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 30, borderWidth: 1, borderColor: '#e2e8f0' },
-  chipActive: { backgroundColor: '#ea580c', borderColor: '#ea580c' },
+  chipActive: { backgroundColor: '#002c5f', borderColor: '#002c5f' },
   chipText: { fontSize: 14, color: '#64748b', fontWeight: '600' },
   chipTextActive: { color: '#fff', fontWeight: 'bold' },
   sliderHeader: { flexDirection: 'row', alignItems: 'center', marginTop: 40 },
-  sliderValue: { fontSize: 12, fontWeight: 'bold', color: '#ea580c', textTransform: 'uppercase' },
+  sliderValue: { fontSize: 12, fontWeight: 'bold', color: '#002c5f', textTransform: 'uppercase' },
   sliderLabels: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 5 },
   sliderLabelText: { fontSize: 12, color: '#94a3b8', fontWeight: '600' },
   
@@ -617,27 +626,27 @@ const styles = StyleSheet.create({
   checkboxText: { flex: 1, fontSize: 14, color: '#64748b' },
   checkboxTextActive: { color: '#1e293b' },
   
-  summaryCard: { backgroundColor: '#fff7ed', padding: 25, borderRadius: 16, marginTop: 10 },
+  summaryCard: { backgroundColor: '#eef3fb', padding: 25, borderRadius: 16, marginTop: 10 },
   summaryHeader: { flexDirection: 'row', marginBottom: 20 },
-  summaryIcon: { backgroundColor: '#ea580c', width: 45, height: 45, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  summaryIcon: { backgroundColor: '#002c5f', width: 45, height: 45, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
   summaryIconText: { color: 'white', fontSize: 20 },
   summaryHeaderTextContainer: { flex: 1 },
   summaryCardTitle: { fontSize: 18, fontWeight: 'bold', color: '#1e293b', marginBottom: 5 },
   summaryCardDesc: { fontSize: 14, color: '#475569', lineHeight: 20 },
   summaryList: { marginTop: 10, gap: 15 },
   summaryListItem: { flexDirection: 'row', alignItems: 'center' },
-  checkCircle: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#fed7aa', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  checkCircleText: { color: '#ea580c', fontSize: 12, fontWeight: 'bold' },
+  checkCircle: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#aec6e6', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  checkCircleText: { color: '#002c5f', fontSize: 12, fontWeight: 'bold' },
   summaryListItemText: { fontSize: 15, color: '#334155', flex: 1 },
 
-  btnPrimary: { backgroundColor: '#ea580c', padding: 15, borderRadius: 30, alignSelf: 'flex-start', marginTop: 10 },
+  btnPrimary: { backgroundColor: '#002c5f', padding: 15, borderRadius: 30, alignSelf: 'flex-start', marginTop: 10 },
   btnPrimaryText: { color: '#fff', fontWeight: 'bold', fontSize: 16, paddingHorizontal: 20 },
   
   footer: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e2e8f0' },
   btnBack: { padding: 15 },
   btnBackText: { color: '#64748b', fontWeight: 'bold', fontSize: 16 },
-  btnNext: { backgroundColor: '#0f172a', paddingVertical: 15, paddingHorizontal: 30, borderRadius: 30 },
+  btnNext: { backgroundColor: '#002c5f', paddingVertical: 15, paddingHorizontal: 30, borderRadius: 30 },
   btnNextText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  btnFinal: { width: '100%', backgroundColor: '#ea580c', paddingVertical: 18, borderRadius: 16, alignItems: 'center' },
+  btnFinal: { width: '100%', backgroundColor: '#002c5f', paddingVertical: 18, borderRadius: 16, alignItems: 'center' },
   btnFinalText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
 });

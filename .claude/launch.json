@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "triage-dashboard", "run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "totem-app-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "totem-app", "run", "web"],
+      "port": 8081
     }
   ]
 }

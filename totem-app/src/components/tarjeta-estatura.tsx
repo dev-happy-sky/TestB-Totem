@@ -98,7 +98,7 @@ const estilos = StyleSheet.create({
   aviso: { color: '#64748b', fontSize: 13, marginVertical: 6 },
   error: { color: '#dc2626', fontSize: 13, fontWeight: '600', marginVertical: 6 },
   entrada: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, fontSize: 18, minWidth: 100, color: '#0f172a', backgroundColor: '#fff', marginTop: 4 },
-  boton: { backgroundColor: '#ea580c', paddingVertical: 10, paddingHorizontal: 18, borderRadius: 24, alignSelf: 'flex-start', marginTop: 8 },
+  boton: { backgroundColor: '#002c5f', paddingVertical: 10, paddingHorizontal: 18, borderRadius: 24, alignSelf: 'flex-start', marginTop: 8 },
   botonTexto: { color: '#fff', fontWeight: 'bold' },
   botonSecundario: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1' },
   botonSecundarioTexto: { color: '#475569', fontWeight: 'bold' },
