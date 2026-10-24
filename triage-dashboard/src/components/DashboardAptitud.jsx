@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import ValidacionAptitud from './ValidacionAptitud';
 import TendenciaSocio from './TendenciaSocio';
-import MenuUsuario from './MenuUsuario';
+import PanelLateral from './PanelLateral';
 import { ETIQUETA_SEVERIDAD, coincidenciaIA, nivelConfianza, nombreCategoria, porcentajeConfianza } from '../lib/ia';
 import { hayCalibracionVencida, resumirDispositivos, resumirErrores } from '../lib/mediciones';
 import { describirContacto, etiquetaDias, horaLocal } from '../lib/formato';
@@ -161,10 +161,9 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout, s
             Seguridad desactivada: cualquiera con la URL del backend puede ver y modificar estos datos.
           </span>
         ) : (
-          <>
-            <MenuUsuario sesion={sesion} backendUrl={BACKEND_URL} authHeaders={authHeaders}
-                         onSesionInvalida={onSesionInvalida} onLogout={onLogout} />
-          </>
+          <PanelLateral sesion={sesion} backendUrl={BACKEND_URL} authHeaders={authHeaders}
+                        evaluaciones={colaEstudiantes}
+                        onSesionInvalida={onSesionInvalida} onLogout={onLogout} />
         )}
       </div>
       <div className="flex gap-4 mb-6">
