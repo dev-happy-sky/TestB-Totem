@@ -87,7 +87,23 @@ export default function SesionDashboard() {
     }
   };
 
-  if (!listo || seguridad === null) return null;
+  // Mientras se restaura la sesión y se consulta la configuración del backend.
+  // Se muestra una pantalla de carga de marca (no un vacío): el backend en Render
+  // puede tardar en "despertar" (arranque en frío) y antes se veía todo negro.
+  if (!listo || seguridad === null) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-100 p-6 text-center">
+        <span className="flex items-center justify-center w-14 h-14 rounded-2xl bg-orange-600 text-white mb-5">
+          <IconoMancuerna className="w-7 h-7" />
+        </span>
+        <span aria-hidden className="w-8 h-8 rounded-full border-[3px] border-orange-200 border-t-orange-600 animate-spin" />
+        <p className="mt-4 text-slate-600 font-semibold" role="status">Conectando con el servidor…</p>
+        <p className="mt-1 text-xs text-slate-400 max-w-xs">
+          Si es la primera visita en un rato, el servidor puede tardar unos segundos en responder.
+        </p>
+      </div>
+    );
+  }
 
   if (seguridad === false) {
     return <DashboardAptitud sesion={SESION_ABIERTA} sinSeguridad onSesionInvalida={() => {}} onLogout={() => {}} />;
