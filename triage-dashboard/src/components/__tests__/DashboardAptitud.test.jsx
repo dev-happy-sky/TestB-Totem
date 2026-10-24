@@ -108,11 +108,11 @@ test('los KPI cuentan pendientes, validados, riesgo alto y alertas', async () =>
   expect(kpi('ALERTAS PENDIENTES')).toBe('1');
 });
 
-test('cerrar sesión (en el menú del usuario) llama a onLogout', async () => {
+test('cerrar sesión (en el panel lateral) llama a onLogout', async () => {
   mockHistorial([]);
   render(<DashboardAptitud {...props} />);
-  await userEvent.click(screen.getByRole('button', { name: /ana · encargado/ }));
-  await userEvent.click(screen.getByRole('menuitem', { name: 'Cerrar sesión' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Abrir menú' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
   expect(props.onLogout).toHaveBeenCalled();
 });
 
@@ -203,7 +203,7 @@ describe('modo sin seguridad (backend con SEGURIDAD_ACTIVA=false)', () => {
     expect(ws.enviados).toEqual([]);
   });
 
-  test('con seguridad (modo normal) sigue mostrando el usuario, el cierre de sesión y enviando el token', async () => {
+  test('con seguridad (modo normal) sigue mostrando el menú, el cierre de sesión y enviando el token', async () => {
     // Arrange
     mockHistorial([]);
     render(<DashboardAptitud {...props} />);
@@ -213,7 +213,7 @@ describe('modo sin seguridad (backend con SEGURIDAD_ACTIVA=false)', () => {
     act(() => ws.onopen());
 
     // Assert
-    expect(screen.getByRole('button', { name: /ana · encargado/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Abrir menú' })).toBeInTheDocument();
     expect(screen.queryByText(/Seguridad desactivada/)).not.toBeInTheDocument();
     expect(JSON.parse(ws.enviados[0])).toEqual({ token: 'tok123' });
   });

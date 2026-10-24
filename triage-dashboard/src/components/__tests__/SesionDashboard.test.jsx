@@ -41,8 +41,8 @@ beforeEach(() => {
 });
 
 async function iniciarSesion(user = userEvent.setup()) {
-  await user.type(await screen.findByPlaceholderText('Usuario'), 'ana');
-  await user.type(screen.getByPlaceholderText('Contraseña'), 'clave');
+  await user.type(await screen.findByLabelText('Usuario'), 'ana');
+  await user.type(screen.getByLabelText('Contraseña'), 'clave');
   await user.click(screen.getByRole('button', { name: 'Ingresar' }));
 }
 

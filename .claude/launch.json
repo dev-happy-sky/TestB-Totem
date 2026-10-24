@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "triage-dashboard",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "triage-dashboard", "run", "dev"],
+      "port": 3000
+    }
+  ]
+}
