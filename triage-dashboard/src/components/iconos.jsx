@@ -74,3 +74,9 @@ export function IconoPesa({ className }) {
 export function IconoRayo({ className }) {
   return (<svg {...base} className={className}><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z" /></svg>);
 }
+export function IconoCampana({ className }) {
+  return (<svg {...base} className={className}><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" /></svg>);
+}
+export function IconoDiana({ className }) {
+  return (<svg {...base} className={className}><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.5" /></svg>);
+}
