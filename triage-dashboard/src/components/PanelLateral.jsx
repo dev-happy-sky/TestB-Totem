@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { nombreCategoria } from '../lib/ia';
 import { MENSAJE_SIN_RESPUESTA } from '../lib/errores';
 import { ENLACES_DUOC } from './enlacesDuoc';
-import { IconoExterno } from './iconos';
+import { IconoExterno, IconoUsuario } from './iconos';
 
 const ETIQUETA_ROL = { admin: 'Administrador', encargado: 'Encargado' };
 
@@ -125,7 +125,8 @@ export default function PanelLateral({ sesion, backendUrl, authHeaders, evaluaci
     <>
       {/* Botón hamburguesa (tres líneas) */}
       <button onClick={() => setAbierto(true)} aria-label="Abrir menú" aria-haspopup="dialog" aria-expanded={abierto}
-              className="flex items-center justify-center w-10 h-10 rounded-lg border border-white/25 bg-white/10 text-white hover:bg-white/20 transition">
+              className="flex items-center gap-1.5 h-10 pl-2.5 pr-2 rounded-lg border border-white/25 bg-white/10 text-white hover:bg-white/20 transition">
+        <IconoUsuario className="w-5 h-5" />
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="w-5 h-5" aria-hidden>
           <path d="M4 6h16M4 12h16M4 18h16" />
         </svg>

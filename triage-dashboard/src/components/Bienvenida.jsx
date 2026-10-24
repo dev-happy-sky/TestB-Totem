@@ -2,10 +2,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import TopNav from './TopNav';
 import PanelLateral from './PanelLateral';
-import { estadoRevision, alertaPendiente } from '../lib/cola';
+import { estadoRevision, alertaPendiente, conObservacion, buenaCondicion } from '../lib/cola';
 import { nombreCategoria } from '../lib/ia';
 import { ENLACES_DUOC } from './enlacesDuoc';
-import { IconoFlecha, IconoExterno, IconoNoticias } from './iconos';
+import { IconoFlecha, IconoExterno, IconoNoticias, IconoCheck, IconoAlerta } from './iconos';
 
 const COLOR_NIVEL = { A1: 'bg-red-500', A2: 'bg-orange-500', A3: 'bg-yellow-500', A4: 'bg-green-500' };
 const nivelDe = (e) => e.nivelFinal || e.iaSugerida;
@@ -89,6 +89,8 @@ export default function Bienvenida({ sesion, backendUrl, authHeaders, sinSegurid
     porValidar: evaluaciones.filter((e) => estadoRevision(e) === 'pendiente').length,
     alertas: evaluaciones.filter(alertaPendiente).length,
     validados: evaluaciones.filter((e) => estadoRevision(e) !== 'pendiente').length,
+    buenas: alumnos.filter(buenaCondicion).length,
+    observacion: alumnos.filter(conObservacion).length,
   }), [evaluaciones, alumnos]);
 
   const nombre = primerNombre(perfil, sesion.usuario);
@@ -116,6 +118,34 @@ export default function Bienvenida({ sesion, backendUrl, authHeaders, sinSegurid
             </button>
           </div>
         </header>
+
+        {/* Dos grupos de alumnos: buenas condiciones / con observación */}
+        <div className="grid sm:grid-cols-2 gap-4 mb-6">
+          <button onClick={() => onNavegar && onNavegar('dashboard', 'buenas')}
+            className="group text-left bg-white rounded-2xl border border-slate-200 p-5 hover:border-green-300 hover:shadow-sm transition">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center justify-center w-12 h-12 rounded-xl bg-green-50 text-green-600"><IconoCheck className="w-6 h-6" /></span>
+              <span className="text-4xl font-bold text-duoc-800">{cargando ? '–' : stats.buenas}</span>
+            </div>
+            <p className="mt-3 font-bold text-duoc-800">Buenas condiciones</p>
+            <p className="text-xs text-slate-500">Alumnos aptos, sin observaciones</p>
+            <span className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-green-700">
+              Ver alumnos <IconoFlecha className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+            </span>
+          </button>
+          <button onClick={() => onNavegar && onNavegar('dashboard', 'observacion')}
+            className="group text-left bg-white rounded-2xl border border-slate-200 p-5 hover:border-amber-300 hover:shadow-sm transition">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center justify-center w-12 h-12 rounded-xl bg-amber-50 text-amber-600"><IconoAlerta className="w-6 h-6" /></span>
+              <span className="text-4xl font-bold text-duoc-800">{cargando ? '–' : stats.observacion}</span>
+            </div>
+            <p className="mt-3 font-bold text-duoc-800">Con observación</p>
+            <p className="text-xs text-slate-500">Requieren tu revisión o seguimiento</p>
+            <span className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-amber-700">
+              Ver alumnos <IconoFlecha className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+            </span>
+          </button>
+        </div>
 
         <div className="grid lg:grid-cols-3 gap-6">
           {/* IZQUIERDA: Noticias y accesos Duoc */}

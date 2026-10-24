@@ -37,6 +37,20 @@ export function filtrarCola(cola, filtro = 'todas') {
   return filtro === 'todas' ? cola : cola.filter((e) => estadoRevision(e) === filtro);
 }
 
+// Clasificación por condición del alumno (solo visual, para resúmenes y filtros rápidos):
+// "con observación" = riesgo A1/A2, alerta pendiente o requiere revisión; "buenas condiciones" = el resto (A3/A4 sin alertas).
+export function conObservacion(e) {
+  const nivel = e.nivelFinal || e.iaSugerida;
+  return nivel === 'A1' || nivel === 'A2' || alertaPendiente(e) || Boolean(e.requiereRevision);
+}
+export const buenaCondicion = (e) => !conObservacion(e);
+
+export function filtrarCondicion(cola, condicion = 'todas') {
+  if (condicion === 'buenas') return cola.filter(buenaCondicion);
+  if (condicion === 'observacion') return cola.filter(conObservacion);
+  return cola;
+}
+
 const METRICAS = [
   { clave: 'peso', etiqueta: 'Peso', unidad: 'kg' },
   { clave: 'presionSys', etiqueta: 'PA sistólica', unidad: 'mmHg' },
