@@ -6,6 +6,7 @@ import {
   actualizarSocio, enviarEvaluacion, identificarSocio, registrarSocio, type CambiosSocio, type RespuestaIdentificacion,
 } from '../services/api';
 import PasoMediciones from '../components/paso-mediciones';
+import BienvenidaTotem from '../components/bienvenida-totem';
 import {
   calcularIMC, crearSensores, ETIQUETA_SENSOR, TIPOS_SENSOR, type ErrorMedicion, type Lectura, type TipoSensor, type ValoresMedidos,
 } from '../sensores';
@@ -26,8 +27,12 @@ const formatearFecha = (iso: string) => {
 };
 const ETIQUETA_ESTADO = { pendiente: 'pendiente de revisión', revisada: 'revisada', derivada: 'derivada' } as const;
 
-export default function App() {
+export default function App({ inicio = 'bienvenida' }: { inicio?: 'bienvenida' | 'evaluacion' } = {}) {
   // --- NAVEGACIÓN ---
+  // `pantalla` decide entre la bienvenida (modo kiosco) y la evaluación (el wizard de 5 pasos).
+  // En producción arranca en la bienvenida; los tests entran directo con inicio="evaluacion".
+  const [pantalla, setPantalla] = useState<'bienvenida' | 'evaluacion'>(inicio);
+  const hayBienvenida = inicio === 'bienvenida';
   const [pasoActual, setPasoActual] = useState(1);
   const totalPasos = 5;
   const nombresPasos = ['Identificación', 'Mediciones', 'Objetivo', 'Salud', 'Listo'];
@@ -94,10 +99,15 @@ export default function App() {
     setPasoActual(1);
   };
 
+  // Empezar la evaluación desde la bienvenida: limpia todo y entra al wizard en el paso 1.
+  const comenzar = () => { reiniciar(); setPantalla('evaluacion'); };
+  // Terminar o cancelar: limpia todo y, en producción, vuelve a la bienvenida.
+  const volverInicio = () => { reiniciar(); if (hayBienvenida) setPantalla('bienvenida'); };
+
   const cancelarEvaluacion = () => {
     mostrarAlerta('¿Cancelar la evaluación?', 'Se borrarán los datos ingresados y volverás al inicio.', [
       { text: 'Seguir evaluándome', style: 'cancel' },
-      { text: 'Sí, cancelar', style: 'destructive', onPress: reiniciar },
+      { text: 'Sí, cancelar', style: 'destructive', onPress: volverInicio },
     ]);
   };
 
@@ -285,7 +295,7 @@ export default function App() {
 
     if (resultado.ok) {
       mostrarAlerta("¡Éxito!", "Tus datos han sido enviados al profesor.");
-      reiniciar();
+      volverInicio();
     } else if (resultado.status === 0) {
       mostrarAlerta("Error de conexión", resultado.mensaje);
     } else {
@@ -511,6 +521,10 @@ export default function App() {
       </View>
     );
   };
+
+  if (pantalla === 'bienvenida') {
+    return <BienvenidaTotem onComenzar={comenzar} />;
+  }
 
   return (
     <SafeAreaView style={styles.container}>
