@@ -19,9 +19,12 @@ const CONSEJOS = [
 ];
 
 const DUOC_DEPORTES = 'https://www.duoc.cl/vida-estudiantil/deportes/';
+// Reserva de hora del Programa de Bienestar Físico (Microsoft Bookings).
+const AGENDA_BIENESTAR = 'https://bookings.cloud.microsoft/book/ProgramadeBienestarFsico@duoc.cl/s/u8FdDnq-WUSnwxXqIk3Jmg2?ismsaljsauthenabled&msdynmkt_trackingcontext=8506e5d3-2cba-4b26-8a0d-e94ba2560100#msdynmkt_trackingcontext=b32314c3-6de1-440e-a994-456776720300';
 
 export default function BienvenidaTotem({ onComenzar }: { onComenzar: () => void }) {
   const abrirDeportes = () => { WebBrowser.openBrowserAsync(DUOC_DEPORTES).catch(() => {}); };
+  const abrirAgenda = () => { WebBrowser.openBrowserAsync(AGENDA_BIENESTAR).catch(() => {}); };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -66,6 +69,15 @@ export default function BienvenidaTotem({ onComenzar }: { onComenzar: () => void
             <Text style={styles.duocDesc}>Descubre las actividades deportivas de Duoc UC</Text>
           </View>
         </TouchableOpacity>
+
+        <Text style={styles.seccion}>Bienestar físico</Text>
+        <TouchableOpacity style={styles.duoc} onPress={abrirAgenda} accessibilityRole="button" accessibilityLabel="Agenda tu hora">
+          <View style={styles.agendaIcon}><Text style={styles.agendaIconText}>📅</Text></View>
+          <View style={styles.duocTextWrap}>
+            <Text style={styles.duocTitle}>Agenda tu hora</Text>
+            <Text style={styles.duocDesc}>Programa de Bienestar Físico · Duoc UC</Text>
+          </View>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -106,6 +118,8 @@ const styles = StyleSheet.create({
   duoc: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#e2e8f0', padding: 16, marginBottom: 12 },
   duocIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: ORO, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
   duocIconText: { color: DUOC, fontSize: 22, fontWeight: '900' },
+  agendaIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#eef3fb', justifyContent: 'center', alignItems: 'center', marginRight: 14 },
+  agendaIconText: { fontSize: 22 },
   duocTextWrap: { flex: 1 },
   duocTitle: { fontSize: 16, fontWeight: 'bold', color: DUOC },
   duocDesc: { fontSize: 13, color: '#64748b', marginTop: 2 },
