@@ -39,12 +39,12 @@ function ItemMenu({ icono, titulo, descripcion, badge, onClick }) {
   return (
     <button onClick={onClick}
             className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 rounded-xl transition">
-      <span className="flex items-center justify-center w-10 h-10 rounded-full bg-orange-50 text-orange-600 shrink-0">{icono}</span>
+      <span className="flex items-center justify-center w-10 h-10 rounded-full bg-duoc-50 text-duoc-700 shrink-0">{icono}</span>
       <span className="flex-1 min-w-0">
         <span className="block font-semibold text-slate-800 text-sm">{titulo}</span>
         {descripcion && <span className="block text-xs text-slate-400 truncate">{descripcion}</span>}
       </span>
-      {badge != null && <span className="text-xs font-bold bg-orange-100 text-orange-700 rounded-full px-2 py-0.5">{badge}</span>}
+      {badge != null && <span className="text-xs font-bold bg-oro-400 text-duoc-900 rounded-full px-2 py-0.5">{badge}</span>}
       <span aria-hidden className="text-slate-300">›</span>
     </button>
   );
@@ -115,7 +115,7 @@ export default function PanelLateral({ sesion, backendUrl, authHeaders, evaluaci
     }
   };
 
-  const campo = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-slate-800 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-500/30';
+  const campo = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-slate-800 outline-none transition focus:border-duoc-500 focus:ring-2 focus:ring-duoc-500/30';
   const etiqueta = 'block text-xs font-semibold text-slate-500 mb-1';
   const nombreMostrado = perfil ? `${perfil.nombre} ${perfil.apellido || ''}`.trim() : sesion.usuario;
 
@@ -123,7 +123,7 @@ export default function PanelLateral({ sesion, backendUrl, authHeaders, evaluaci
     <>
       {/* Botón hamburguesa (tres líneas) */}
       <button onClick={() => setAbierto(true)} aria-label="Abrir menú" aria-haspopup="dialog" aria-expanded={abierto}
-              className="flex items-center justify-center w-10 h-10 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition">
+              className="flex items-center justify-center w-10 h-10 rounded-lg border border-white/25 bg-white/10 text-white hover:bg-white/20 transition">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="w-5 h-5" aria-hidden>
           <path d="M4 6h16M4 12h16M4 18h16" />
         </svg>
@@ -136,7 +136,7 @@ export default function PanelLateral({ sesion, backendUrl, authHeaders, evaluaci
       <aside role="dialog" aria-modal="true" aria-label="Menú del encargado"
              className={`fixed top-0 right-0 h-full w-full max-w-sm bg-white shadow-2xl z-50 flex flex-col transition-transform duration-300 ${abierto ? 'translate-x-0' : 'translate-x-full'}`}>
         {/* Cabecera con avatar (estilo perfil) */}
-        <div className="bg-gradient-to-br from-orange-500 to-orange-700 text-white p-5">
+        <div className="bg-gradient-to-br from-duoc-700 to-duoc-500 text-white p-5">
           <div className="flex justify-end">
             <button onClick={cerrar} aria-label="Cerrar menú" className="text-white/80 hover:text-white text-2xl leading-none">×</button>
           </div>
@@ -205,7 +205,7 @@ export default function PanelLateral({ sesion, backendUrl, authHeaders, evaluaci
                     ))}
                   </dl>
                   <button onClick={() => setVista('editar')}
-                          className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl py-2.5 transition">
+                          className="w-full bg-duoc-700 hover:bg-duoc-800 text-white font-bold rounded-xl py-2.5 transition">
                     Editar perfil
                   </button>
                 </>
@@ -239,7 +239,7 @@ export default function PanelLateral({ sesion, backendUrl, authHeaders, evaluaci
                   {error && <p className="text-red-600" role="alert">{error}</p>}
                   {aviso && <p className="text-green-700" role="status">{aviso}</p>}
                   <button type="submit" disabled={cargando}
-                          className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl py-2.5 transition disabled:opacity-60">
+                          className="w-full bg-duoc-700 hover:bg-duoc-800 text-white font-bold rounded-xl py-2.5 transition disabled:opacity-60">
                     {cargando ? 'Guardando…' : 'Guardar cambios'}
                   </button>
                 </form>

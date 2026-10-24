@@ -3,12 +3,13 @@ import React, { useState, useEffect } from 'react';
 import ValidacionAptitud from './ValidacionAptitud';
 import TendenciaSocio from './TendenciaSocio';
 import PanelLateral from './PanelLateral';
+import TopNav from './TopNav';
 import { ETIQUETA_SEVERIDAD, coincidenciaIA, nivelConfianza, nombreCategoria, porcentajeConfianza } from '../lib/ia';
 import { hayCalibracionVencida, resumirDispositivos, resumirErrores } from '../lib/mediciones';
 import { describirContacto, etiquetaDias, horaLocal } from '../lib/formato';
 import { FILTROS, alertaPendiente, describirOrigen, duracionEvaluacion, estadoRevision, filtrarCola, ordenarCola } from '../lib/cola';
 
-export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout, sinSeguridad = false }) {
+export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout, sinSeguridad = false, vista = 'dashboard', onNavegar }) {
   const [colaEstudiantes, setColaEstudiantes] = useState([]);
   const [estudianteSeleccionado, setEstudianteSeleccionado] = useState(null);
   const [filtro, setFiltro] = useState('todas');
@@ -154,18 +155,20 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout, s
   const totalGraph = Math.max(1, colaEstudiantes.length);
 
   return (
-    <div className="min-h-screen bg-slate-100 p-6 flex flex-col font-sans">
-      <div className="flex justify-end items-center gap-3 mb-3 text-xs text-slate-500">
-        {sinSeguridad ? (
-          <span role="alert" className="font-semibold text-amber-800 bg-amber-100 border border-amber-300 rounded px-2 py-1">
-            Seguridad desactivada: cualquiera con la URL del backend puede ver y modificar estos datos.
-          </span>
-        ) : (
+    <div className="min-h-screen bg-[var(--background)] font-sans">
+      <TopNav vista={vista} onNavegar={onNavegar} sinSeguridad={sinSeguridad}>
+        {!sinSeguridad && (
           <PanelLateral sesion={sesion} backendUrl={BACKEND_URL} authHeaders={authHeaders}
                         evaluaciones={colaEstudiantes}
                         onSesionInvalida={onSesionInvalida} onLogout={onLogout} />
         )}
-      </div>
+      </TopNav>
+      <div className="p-6 flex flex-col">
+      {sinSeguridad && (
+        <div role="alert" className="mb-4 font-semibold text-amber-800 bg-amber-100 border border-amber-300 rounded-lg px-3 py-2 text-sm">
+          Seguridad desactivada: cualquiera con la URL del backend puede ver y modificar estos datos.
+        </div>
+      )}
       <div className="flex gap-4 mb-6">
         {[
           { l: 'POR VALIDAR', v: kpiPendientes, c: 'text-slate-800' },
@@ -183,7 +186,7 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout, s
         ))}
       </div>
 
-      <main className="flex gap-6 h-[calc(100vh-160px)]">
+      <main className="flex gap-6 h-[calc(100vh-210px)]">
         <section className="w-[450px] flex flex-col gap-6">
           <div className="bg-white rounded-xl shadow-sm p-5 border border-slate-100">
             <h2 className="text-sm font-bold mb-4 text-slate-800">Distribución de aptitud</h2>
@@ -209,7 +212,7 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout, s
              <div role="tablist" aria-label="Filtrar por estado" className="px-4 py-2 flex gap-2 border-b border-slate-100 bg-white">
                 {FILTROS.map((f) => (
                   <button key={f.id} role="tab" aria-selected={filtro === f.id} onClick={() => setFiltro(f.id)}
-                    className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${filtro === f.id ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>
+                    className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${filtro === f.id ? 'bg-duoc-700 text-white border-duoc-700' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>
                     {f.label} ({contarFiltro(f.id)})
                   </button>
                 ))}
@@ -226,7 +229,7 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout, s
                const nivelVisible = estudiante.nivelFinal || estudiante.iaSugerida;
                
                return (
-                 <div key={estudiante.idUnico} onClick={() => setEstudianteSeleccionado(estudiante)} className={`p-4 flex items-center gap-3 cursor-pointer border-b border-slate-100 transition-all ${esSeleccionado ? 'bg-slate-50 border-l-4 border-slate-400' : 'bg-white hover:bg-slate-50 border-l-4 border-transparent'} ${estadoRevision(estudiante) !== 'pendiente' ? 'opacity-50 grayscale-[50%]' : ''}`}>
+                 <div key={estudiante.idUnico} onClick={() => setEstudianteSeleccionado(estudiante)} className={`p-4 flex items-center gap-3 cursor-pointer border-b border-slate-100 transition-all ${esSeleccionado ? 'bg-duoc-50 border-l-4 border-duoc-500' : 'bg-white hover:bg-slate-50 border-l-4 border-transparent'} ${estadoRevision(estudiante) !== 'pendiente' ? 'opacity-50 grayscale-[50%]' : ''}`}>
                     <div className={`w-10 h-10 text-white font-bold rounded-lg flex items-center justify-center ${nivelVisible === 'A1' ? 'bg-red-500' : nivelVisible === 'A2' ? 'bg-orange-500' : nivelVisible === 'A3' ? 'bg-yellow-500' : 'bg-green-500'}`}>
                       {nivelVisible}
                     </div>
@@ -437,6 +440,7 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout, s
           )}
         </section>
       </main>
+      </div>
     </div>
   );
 }
