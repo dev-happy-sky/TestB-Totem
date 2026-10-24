@@ -100,7 +100,7 @@ const volverAlFormulario = async () => {
 // Deja a un socio ya registrado en el paso 2 (mediciones), con el consentimiento aceptado y la estatura ya escrita;
 // `{ estatura: null }` deja la estatura sin escribir.
 const llegarAlPaso2 = async ({ estatura = ESTATURA_POR_DEFECTO as string | null } = {}) => {
-  await render(<App />);
+  await render(<App inicio="evaluacion" />);
   await buscar();
   await screen.findByText('PASO 2 - ESTACIÓN DE SENSORES');
   await aceptarConsentimiento();
@@ -125,10 +125,27 @@ const irAlUltimoPaso = async (dias = 3) => {
   await fireEvent.press(screen.getByText('Continuar →')); // paso 5
 };
 
+describe('pantalla de bienvenida (modo kiosco)', () => {
+  test('la app arranca en la bienvenida y "Comenzar" entra al wizard', async () => {
+    // Arrange / Act: sin prop arranca en la bienvenida
+    await render(<App />);
+
+    // Assert: se ve la bienvenida y aún no el wizard
+    expect(screen.getByText('Consejos de salud')).toBeTruthy();
+    expect(screen.getByText('Horario del gimnasio')).toBeTruthy();
+    expect(screen.queryByText('PASO 1 - IDENTIFICACIÓN')).toBeNull();
+
+    // Al comenzar entra al paso 1
+    await fireEvent.press(screen.getByLabelText('Comenzar evaluación'));
+    expect(screen.getByText('PASO 1 - IDENTIFICACIÓN')).toBeTruthy();
+    expect(screen.getByText('Buscar mi matrícula')).toBeTruthy();
+  });
+});
+
 describe('identificación por matrícula (R.1, R.2)', () => {
   test('el paso 1 pide la matrícula y aún no deja continuar', async () => {
     // Arrange / Act
-    await render(<App />);
+    await render(<App inicio="evaluacion" />);
 
     // Assert
     expect(screen.getByText('PASO 1 - IDENTIFICACIÓN')).toBeTruthy();
@@ -140,7 +157,7 @@ describe('identificación por matrícula (R.1, R.2)', () => {
   test('una matrícula con formato inválido muestra el error sin llamar al servidor', async () => {
     // Arrange
     global.fetch = jest.fn() as unknown as typeof fetch;
-    await render(<App />);
+    await render(<App inicio="evaluacion" />);
 
     // Act
     await buscar('ab$12');
@@ -153,7 +170,7 @@ describe('identificación por matrícula (R.1, R.2)', () => {
   test('la matrícula se envía normalizada', async () => {
     // Arrange
     mockApi(NUEVO);
-    await render(<App />);
+    await render(<App inicio="evaluacion" />);
 
     // Act
     await buscar(' 2023-1234 a ');
@@ -166,7 +183,7 @@ describe('identificación por matrícula (R.1, R.2)', () => {
   test('si el servidor limita las consultas muestra su mensaje y permite reintentar', async () => {
     // Arrange
     mockApi({ 'POST /api/socios/identificar': { status: 429, body: { detail: 'Demasiadas consultas. Intenta en unos minutos.' } } });
-    await render(<App />);
+    await render(<App inicio="evaluacion" />);
 
     // Act
     await buscar();
@@ -179,7 +196,7 @@ describe('identificación por matrícula (R.1, R.2)', () => {
   test('si no hay conexión muestra el error', async () => {
     // Arrange
     global.fetch = jest.fn().mockRejectedValue(new Error('sin red')) as unknown as typeof fetch;
-    await render(<App />);
+    await render(<App inicio="evaluacion" />);
 
     // Act
     await buscar();
@@ -192,7 +209,7 @@ describe('identificación por matrícula (R.1, R.2)', () => {
 describe('socio ya registrado (R.4, R.5, R.7): pasa directo a las mediciones', () => {
   const entrar = async (extra: object = {}, rutas: Record<string, RutaOFuncion> = {}) => {
     mockApi({ ...registrado(extra), ...rutas });
-    await render(<App />);
+    await render(<App inicio="evaluacion" />);
     await buscar();
     await screen.findByText('PASO 2 - ESTACIÓN DE SENSORES');
   };
@@ -405,7 +422,7 @@ describe('socio ya registrado (R.4, R.5, R.7): pasa directo a las mediciones', (
   test('un socio antiguo sin fecha de nacimiento se queda en el formulario para completarla', async () => {
     // Arrange
     mockApi(registrado({ socio: { ...SOCIO, fecha_nacimiento: null, edad: 33 } }));
-    await render(<App />);
+    await render(<App inicio="evaluacion" />);
 
     // Act
     await buscar();
@@ -419,7 +436,7 @@ describe('socio ya registrado (R.4, R.5, R.7): pasa directo a las mediciones', (
   test('un socio antiguo sin fecha de nacimiento debe completarla antes de continuar', async () => {
     // Arrange
     mockApi(registrado({ socio: { ...SOCIO, fecha_nacimiento: null, edad: 33 } }));
-    await render(<App />);
+    await render(<App inicio="evaluacion" />);
     await buscar();
     await screen.findByText('Hola, Ana');
     await aceptarConsentimiento();
@@ -439,7 +456,7 @@ describe('socio ya registrado (R.4, R.5, R.7): pasa directo a las mediciones', (
   ])('un socio %s también se queda en el formulario', async (_caso, cambios) => {
     // Arrange
     mockApi(registrado({ socio: { ...SOCIO, ...cambios } }));
-    await render(<App />);
+    await render(<App inicio="evaluacion" />);
 
     // Act
     await buscar();
@@ -465,7 +482,7 @@ describe('socio ya registrado (R.4, R.5, R.7): pasa directo a las mediciones', (
   test('un socio nuevo sigue pasando por el formulario de registro', async () => {
     // Arrange
     mockApi(NUEVO);
-    await render(<App />);
+    await render(<App inicio="evaluacion" />);
 
     // Act
     await buscar();
@@ -479,7 +496,7 @@ describe('socio ya registrado (R.4, R.5, R.7): pasa directo a las mediciones', (
 describe('socio nuevo (R.3) y posibles duplicados (R.11)', () => {
   const prepararNuevo = async (rutas: Record<string, RutaOFuncion> = {}) => {
     mockApi({ ...NUEVO, ...rutas });
-    await render(<App />);
+    await render(<App inicio="evaluacion" />);
     await buscar();
     await screen.findByText('No encontramos tu matrícula');
   };
@@ -1424,7 +1441,7 @@ describe('estatura primero: bloquea el resto de las mediciones hasta escribirla'
 describe('campo de fecha de nacimiento (DD/MM/AAAA)', () => {
   const prepararNuevo = async (rutas: Record<string, RutaOFuncion> = {}) => {
     mockApi({ ...NUEVO, ...rutas });
-    await render(<App />);
+    await render(<App inicio="evaluacion" />);
     await buscar();
     await screen.findByText('No encontramos tu matrícula');
   };
@@ -1544,7 +1561,7 @@ describe('campo de fecha de nacimiento (DD/MM/AAAA)', () => {
     mockApi(registrado());
 
     // Act
-    await render(<App />);
+    await render(<App inicio="evaluacion" />);
     await buscar();
     await screen.findByText('PASO 2 - ESTACIÓN DE SENSORES');
     await volverAlFormulario();
@@ -1557,7 +1574,7 @@ describe('campo de fecha de nacimiento (DD/MM/AAAA)', () => {
 describe('plan de membresía por opciones', () => {
   const prepararNuevo = async (rutas: Record<string, RutaOFuncion> = {}, matricula = MATRICULA) => {
     mockApi({ ...NUEVO, ...rutas });
-    await render(<App />);
+    await render(<App inicio="evaluacion" />);
     await buscar(matricula);
     await screen.findByText('No encontramos tu matrícula');
   };
@@ -1637,7 +1654,7 @@ describe('plan de membresía por opciones', () => {
     mockApi(registrado());
 
     // Act
-    await render(<App />);
+    await render(<App inicio="evaluacion" />);
     await buscar();
     await screen.findByText('PASO 2 - ESTACIÓN DE SENSORES');
     await volverAlFormulario();
@@ -1653,7 +1670,7 @@ describe('plan de membresía por opciones', () => {
     mockApi({ ...registrado(), 'POST /api/socios/identificar': { body: { ...(registrado()['POST /api/socios/identificar'] as { body: object }).body, socio } } });
 
     // Act
-    await render(<App />);
+    await render(<App inicio="evaluacion" />);
     await buscar();
     await screen.findByText('PASO 2 - ESTACIÓN DE SENSORES');
     await volverAlFormulario();
@@ -1684,7 +1701,7 @@ describe('plan de membresía por opciones', () => {
   test('una matrícula de menos de 6 caracteres se rechaza sin llamar al servidor', async () => {
     // Arrange
     global.fetch = jest.fn() as unknown as typeof fetch;
-    await render(<App />);
+    await render(<App inicio="evaluacion" />);
 
     // Act
     await buscar('ABC12');
