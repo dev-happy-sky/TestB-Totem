@@ -1,13 +1,35 @@
 "use client";
 import React, { useState, useEffect, useCallback } from 'react';
 import DashboardAptitud from './DashboardAptitud';
+import Bienvenida from './Bienvenida';
 import { MENSAJE_SIN_RESPUESTA, describirServidor, mensajeErrorLogin } from '../lib/errores';
+import { IconoMancuerna, IconoUsuario, IconoCandado, IconoOjo, IconoOjoTachado } from './iconos';
 
 export const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://totem-backend-g6yh.onrender.com';
 const INACTIVIDAD_MS = 15 * 60 * 1000; // R.174: cierre de sesión tras 15 min sin actividad
 const CLAVE_SESION = 'totem_sesion';
 // Con el backend sin seguridad (SEGURIDAD_ACTIVA=false) no hay login: el panel se abre directo.
 const SESION_ABIERTA = { token: null, rol: 'admin', usuario: 'Sin seguridad' };
+
+// Área autenticada: alterna entre la página de bienvenida (inicio) y el dashboard.
+function AppAutenticada({ sesion, sinSeguridad = false, backendUrl, onSesionInvalida, onLogout }) {
+  const [vista, setVista] = useState('inicio');   // 'inicio' | 'dashboard'
+
+  if (vista === 'dashboard') {
+    return (
+      <DashboardAptitud sesion={sesion} sinSeguridad={sinSeguridad}
+                        vista={vista} onNavegar={setVista}
+                        onSesionInvalida={onSesionInvalida} onLogout={onLogout} />
+    );
+  }
+
+  const authHeaders = sesion.token ? { Authorization: `Bearer ${sesion.token}` } : {};
+  return (
+    <Bienvenida sesion={sesion} sinSeguridad={sinSeguridad} backendUrl={backendUrl}
+                authHeaders={authHeaders} vista={vista} onNavegar={setVista}
+                onSesionInvalida={onSesionInvalida} onLogout={onLogout} />
+  );
+}
 
 export default function SesionDashboard() {
   const [sesion, setSesion] = useState(null);
@@ -88,15 +110,15 @@ export default function SesionDashboard() {
   };
 
   // Mientras se restaura la sesión y se consulta la configuración del backend.
-  // Se muestra una pantalla de carga de marca (no un vacío): el backend en Render
-  // puede tardar en "despertar" (arranque en frío) y antes se veía todo negro.
+  // Pantalla de carga de marca (no un vacío oscuro): el backend en Render puede
+  // tardar en "despertar" (arranque en frío).
   if (!listo || seguridad === null) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-100 p-6 text-center">
-        <span className="flex items-center justify-center w-14 h-14 rounded-2xl bg-orange-600 text-white mb-5">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[var(--background)] p-6 text-center">
+        <span className="flex items-center justify-center w-14 h-14 rounded-2xl bg-duoc-700 text-oro-400 mb-5">
           <IconoMancuerna className="w-7 h-7" />
         </span>
-        <span aria-hidden className="w-8 h-8 rounded-full border-[3px] border-orange-200 border-t-orange-600 animate-spin" />
+        <span aria-hidden className="w-8 h-8 rounded-full border-[3px] border-duoc-100 border-t-duoc-700 animate-spin" />
         <p className="mt-4 text-slate-600 font-semibold" role="status">Conectando con el servidor…</p>
         <p className="mt-1 text-xs text-slate-400 max-w-xs">
           Si es la primera visita en un rato, el servidor puede tardar unos segundos en responder.
@@ -106,27 +128,29 @@ export default function SesionDashboard() {
   }
 
   if (seguridad === false) {
-    return <DashboardAptitud sesion={SESION_ABIERTA} sinSeguridad onSesionInvalida={() => {}} onLogout={() => {}} />;
+    return <AppAutenticada sesion={SESION_ABIERTA} sinSeguridad backendUrl={BACKEND_URL}
+                           onSesionInvalida={() => {}} onLogout={() => {}} />;
   }
 
   if (sesion) {
-    return <DashboardAptitud sesion={sesion} onSesionInvalida={() => cerrarSesion('Tu sesión expiró. Ingresa nuevamente.')} onLogout={() => cerrarSesion()} />;
+    return <AppAutenticada sesion={sesion} backendUrl={BACKEND_URL}
+                           onSesionInvalida={() => cerrarSesion('Tu sesión expiró. Ingresa nuevamente.')}
+                           onLogout={() => cerrarSesion()} />;
   }
 
   return (
-    <div className="min-h-screen flex items-stretch bg-slate-100">
+    <div className="min-h-screen flex items-stretch bg-[var(--background)]">
       {/* Columna de marca: visible en pantallas medianas y grandes */}
-      <aside className="hidden md:flex md:w-1/2 lg:w-[55%] relative overflow-hidden bg-gradient-to-br from-orange-500 via-orange-600 to-orange-700 text-white p-12 flex-col justify-between">
-        {/* Textura sutil de fondo */}
-        <div aria-hidden className="pointer-events-none absolute inset-0 opacity-20">
-          <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-white/20 blur-3xl" />
-          <div className="absolute bottom-0 -left-20 w-80 h-80 rounded-full bg-black/20 blur-3xl" />
+      <aside className="hidden md:flex md:w-1/2 lg:w-[55%] relative overflow-hidden bg-gradient-to-br from-duoc-700 via-duoc-700 to-duoc-500 text-white p-12 flex-col justify-between">
+        <div aria-hidden className="pointer-events-none absolute inset-0 opacity-25">
+          <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-oro-400/40 blur-3xl" />
+          <div className="absolute bottom-0 -left-20 w-80 h-80 rounded-full bg-white/10 blur-3xl" />
         </div>
         <div className="relative flex items-center gap-3">
-          <span className="flex items-center justify-center w-11 h-11 rounded-xl bg-white/15 ring-1 ring-white/30">
+          <span className="flex items-center justify-center w-11 h-11 rounded-xl bg-oro-400 text-duoc-800">
             <IconoMancuerna className="w-6 h-6" />
           </span>
-          <span className="text-lg font-black tracking-tight">TÓTEM<span className="font-light"> FIT</span></span>
+          <span className="text-lg font-black tracking-tight">TÓTEM<span className="font-light text-oro-400"> FIT</span></span>
         </div>
         <div className="relative max-w-md">
           <h2 className="text-4xl font-black leading-tight">Aptitud física,<br />bajo control.</h2>
@@ -142,15 +166,15 @@ export default function SesionDashboard() {
         <div className="w-full max-w-sm">
           {/* Marca compacta para móvil */}
           <div className="md:hidden flex items-center justify-center gap-2 mb-8">
-            <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-orange-600 text-white">
+            <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-duoc-700 text-oro-400">
               <IconoMancuerna className="w-5 h-5" />
             </span>
-            <span className="text-lg font-black tracking-tight text-slate-800">TÓTEM<span className="font-light text-orange-600"> FIT</span></span>
+            <span className="text-lg font-black tracking-tight text-duoc-800">TÓTEM<span className="font-light text-duoc-500"> FIT</span></span>
           </div>
 
-          <form onSubmit={iniciarSesion} className="bg-white rounded-2xl shadow-xl shadow-slate-200/70 border border-slate-100 p-8 space-y-5">
+          <form onSubmit={iniciarSesion} className="bg-white rounded-2xl shadow-xl shadow-duoc-900/10 border border-slate-100 p-8 space-y-5">
             <div>
-              <h1 className="text-2xl font-black text-slate-800">Bienvenido de vuelta</h1>
+              <h1 className="text-2xl font-black text-duoc-800">Bienvenido de vuelta</h1>
               <p className="text-sm text-slate-500 mt-1">Ingresa con tu cuenta autorizada para ver las evaluaciones.</p>
             </div>
 
@@ -159,8 +183,8 @@ export default function SesionDashboard() {
               <div className="relative">
                 <span aria-hidden className="absolute inset-y-0 left-3 flex items-center text-slate-400"><IconoUsuario className="w-5 h-5" /></span>
                 <input
-                  className="w-full border border-slate-300 rounded-xl pl-10 pr-3 py-2.5 text-slate-800 placeholder-slate-400 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-500/30"
-                  placeholder="tu.usuario" autoComplete="username"
+                  className="w-full border border-slate-300 rounded-xl pl-10 pr-3 py-2.5 text-slate-800 placeholder-slate-400 outline-none transition focus:border-duoc-500 focus:ring-2 focus:ring-duoc-500/30"
+                  placeholder="tu.correo@ejemplo.com" autoComplete="username"
                   value={usuario} onChange={(e) => setUsuario(e.target.value)} required
                 />
               </div>
@@ -171,7 +195,7 @@ export default function SesionDashboard() {
               <div className="relative">
                 <span aria-hidden className="absolute inset-y-0 left-3 flex items-center text-slate-400"><IconoCandado className="w-5 h-5" /></span>
                 <input
-                  className="w-full border border-slate-300 rounded-xl pl-10 pr-11 py-2.5 text-slate-800 placeholder-slate-400 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-500/30"
+                  className="w-full border border-slate-300 rounded-xl pl-10 pr-11 py-2.5 text-slate-800 placeholder-slate-400 outline-none transition focus:border-duoc-500 focus:ring-2 focus:ring-duoc-500/30"
                   type={verClave ? 'text' : 'password'} placeholder="••••••••" autoComplete="current-password"
                   value={password} onChange={(e) => setPassword(e.target.value)} required
                 />
@@ -188,7 +212,7 @@ export default function SesionDashboard() {
             )}
 
             <button type="submit" disabled={cargando}
-                    className="w-full bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white font-bold rounded-xl py-2.5 transition disabled:opacity-60 disabled:cursor-not-allowed shadow-lg shadow-orange-600/20">
+                    className="w-full bg-duoc-700 hover:bg-duoc-800 active:bg-duoc-900 text-white font-bold rounded-xl py-2.5 transition disabled:opacity-60 disabled:cursor-not-allowed shadow-lg shadow-duoc-700/20">
               {cargando ? 'Ingresando…' : 'Ingresar'}
             </button>
 
@@ -197,42 +221,5 @@ export default function SesionDashboard() {
         </div>
       </div>
     </div>
-  );
-}
-
-/* --- Íconos en línea (sin dependencias externas) --- */
-function IconoMancuerna({ className }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
-      <path d="M6.5 6.5v11M3.5 9v6M17.5 6.5v11M20.5 9v6M6.5 12h11" />
-    </svg>
-  );
-}
-function IconoUsuario({ className }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
-      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
-    </svg>
-  );
-}
-function IconoCandado({ className }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
-      <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
-    </svg>
-  );
-}
-function IconoOjo({ className }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
-      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" />
-    </svg>
-  );
-}
-function IconoOjoTachado({ className }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
-      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-10-8-10-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 8 10 8a18.5 18.5 0 0 1-2.16 3.19M1 1l22 22" />
-    </svg>
   );
 }

@@ -2,20 +2,26 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import SesionDashboard from '../SesionDashboard';
 
-// El dashboard real se prueba aparte; aquí solo importa que reciba la sesión.
-const mockPropsDashboard = [];
-jest.mock('../DashboardAptitud', () => ({
+// Tras autenticar, la vista inicial es la Bienvenida (el dashboard se abre desde ahí).
+// La Bienvenida y el dashboard reales se prueban aparte; aquí solo importa que reciban la sesión.
+const mockPropsVista = [];
+jest.mock('../Bienvenida', () => ({
   __esModule: true,
-  default: ({ sesion, onLogout, onSesionInvalida, sinSeguridad }) => {
-    mockPropsDashboard.push({ sesion, sinSeguridad });
+  default: ({ sesion, onLogout, onSesionInvalida, onNavegar, sinSeguridad }) => {
+    mockPropsVista.push({ sesion, sinSeguridad });
     return (
     <div>
-      <span>Dashboard de {sesion.usuario} ({sesion.rol})</span>
+      <span>Bienvenida de {sesion.usuario} ({sesion.rol})</span>
       <button onClick={onLogout}>Cerrar sesión</button>
       <button onClick={onSesionInvalida}>Sesión expirada</button>
+      <button onClick={() => onNavegar('dashboard')}>Ir al dashboard</button>
     </div>
     );
   },
+}));
+jest.mock('../DashboardAptitud', () => ({
+  __esModule: true,
+  default: ({ sesion }) => <span>Dashboard de {sesion.usuario} ({sesion.rol})</span>,
 }));
 
 const respuestaLogin = { ok: true, json: async () => ({ token: 'tok123', rol: 'encargado', usuario: 'ana' }) };
@@ -34,7 +40,7 @@ function responderLogin(respuesta, { falla = false, configuracion = CONFIG_CON_S
 }
 
 beforeEach(() => {
-  mockPropsDashboard.length = 0;
+  mockPropsVista.length = 0;
   sessionStorage.clear();
   global.fetch = jest.fn();
   responderLogin(undefined);
@@ -46,18 +52,18 @@ async function iniciarSesion(user = userEvent.setup()) {
   await user.click(screen.getByRole('button', { name: 'Ingresar' }));
 }
 
-test('sin sesión muestra el formulario de login y no el dashboard', async () => {
+test('sin sesión muestra el formulario de login y no la bienvenida', async () => {
   render(<SesionDashboard />);
   expect(await screen.findByRole('button', { name: 'Ingresar' })).toBeInTheDocument();
-  expect(screen.queryByText(/Dashboard de/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Bienvenida de/)).not.toBeInTheDocument();
 });
 
-test('login exitoso entra al dashboard y guarda el token solo en sessionStorage', async () => {
+test('login exitoso entra a la bienvenida y guarda el token solo en sessionStorage', async () => {
   responderLogin(respuestaLogin);
   render(<SesionDashboard />);
   await iniciarSesion();
 
-  expect(await screen.findByText('Dashboard de ana (encargado)')).toBeInTheDocument();
+  expect(await screen.findByText('Bienvenida de ana (encargado)')).toBeInTheDocument();
   const [url, opciones] = llamadasLogin()[0];
   expect(url).toMatch(/\/api\/auth\/login$/);
   expect(JSON.parse(opciones.body)).toEqual({ username: 'ana', password: 'clave' });
@@ -71,7 +77,7 @@ test('credenciales inválidas muestran el error del servidor', async () => {
   await iniciarSesion();
 
   expect(await screen.findByRole('alert')).toHaveTextContent('Credenciales inválidas');
-  expect(screen.queryByText(/Dashboard de/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Bienvenida de/)).not.toBeInTheDocument();
 });
 
 test.each([
@@ -123,7 +129,7 @@ test('error de red muestra un mensaje y no rompe el formulario', async () => {
 test('restaura la sesión guardada al recargar la página', async () => {
   sessionStorage.setItem('totem_sesion', JSON.stringify({ token: 't', rol: 'admin', usuario: 'root' }));
   render(<SesionDashboard />);
-  expect(await screen.findByText('Dashboard de root (admin)')).toBeInTheDocument();
+  expect(await screen.findByText('Bienvenida de root (admin)')).toBeInTheDocument();
 });
 
 test('cerrar sesión borra el token y vuelve al login', async () => {
@@ -153,7 +159,7 @@ describe('cierre por inactividad (R.174)', () => {
   test('cierra la sesión tras 15 minutos sin actividad', async () => {
     sembrar();
     render(<SesionDashboard />);
-    expect(await screen.findByText(/Dashboard de root/)).toBeInTheDocument();
+    expect(await screen.findByText(/Bienvenida de root/)).toBeInTheDocument();
 
     act(() => { jest.advanceTimersByTime(15 * 60 * 1000 + 100); });
 
@@ -164,13 +170,13 @@ describe('cierre por inactividad (R.174)', () => {
   test('la actividad del usuario reinicia el contador', async () => {
     sembrar();
     render(<SesionDashboard />);
-    await screen.findByText(/Dashboard de root/);
+    await screen.findByText(/Bienvenida de root/);
 
     act(() => { jest.advanceTimersByTime(14 * 60 * 1000); });
     act(() => { window.dispatchEvent(new Event('mousemove')); });
     act(() => { jest.advanceTimersByTime(14 * 60 * 1000); });
 
-    expect(screen.getByText(/Dashboard de root/)).toBeInTheDocument();
+    expect(screen.getByText(/Bienvenida de root/)).toBeInTheDocument();
   });
 });
 
@@ -185,7 +191,7 @@ describe('backend sin seguridad (SEGURIDAD_ACTIVA=false)', () => {
     render(<SesionDashboard />);
 
     // Assert
-    expect(await screen.findByText(/Dashboard de Sin seguridad \(admin\)/)).toBeInTheDocument();
+    expect(await screen.findByText(/Bienvenida de Sin seguridad \(admin\)/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Ingresar' })).not.toBeInTheDocument();
     expect(llamadasLogin()).toHaveLength(0);
   });
@@ -196,10 +202,10 @@ describe('backend sin seguridad (SEGURIDAD_ACTIVA=false)', () => {
 
     // Act
     render(<SesionDashboard />);
-    await screen.findByText(/Dashboard de/);
+    await screen.findByText(/Bienvenida de/);
 
     // Assert
-    expect(mockPropsDashboard.at(-1)).toMatchObject({ sinSeguridad: true, sesion: { token: null, rol: 'admin' } });
+    expect(mockPropsVista.at(-1)).toMatchObject({ sinSeguridad: true, sesion: { token: null, rol: 'admin' } });
   });
 
   test.each([
@@ -217,7 +223,7 @@ describe('backend sin seguridad (SEGURIDAD_ACTIVA=false)', () => {
 
     // Assert
     expect(await screen.findByRole('button', { name: 'Ingresar' })).toBeInTheDocument();
-    expect(screen.queryByText(/Dashboard de/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Bienvenida de/)).not.toBeInTheDocument();
   });
 
   test('si no se puede consultar la configuración (red caída) pide login', async () => {
@@ -240,6 +246,6 @@ describe('backend sin seguridad (SEGURIDAD_ACTIVA=false)', () => {
 
     // Assert
     expect(screen.queryByRole('button', { name: 'Ingresar' })).not.toBeInTheDocument();
-    expect(screen.queryByText(/Dashboard de/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Bienvenida de/)).not.toBeInTheDocument();
   });
 });
