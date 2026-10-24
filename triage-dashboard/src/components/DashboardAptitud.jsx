@@ -7,9 +7,17 @@ import TopNav from './TopNav';
 import { ETIQUETA_SEVERIDAD, coincidenciaIA, nivelConfianza, nombreCategoria, porcentajeConfianza } from '../lib/ia';
 import { hayCalibracionVencida, resumirDispositivos, resumirErrores } from '../lib/mediciones';
 import { describirContacto, etiquetaDias, horaLocal } from '../lib/formato';
-import { FILTROS, alertaPendiente, describirOrigen, duracionEvaluacion, estadoRevision, filtrarCola, ordenarCola } from '../lib/cola';
+import { FILTROS, alertaPendiente, describirOrigen, duracionEvaluacion, estadoRevision, filtrarCola, filtrarCondicion, ordenarCola } from '../lib/cola';
+import { IconoCorazon, IconoPulso, IconoGota, IconoBalanza, IconoRegla, IconoPersona, IconoPesa, IconoRayo } from './iconos';
 
-export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout, sinSeguridad = false, vista = 'dashboard', onNavegar }) {
+const CONDICIONES = [
+  { id: 'todas', label: 'Todos' },
+  { id: 'buenas', label: 'Buenas' },
+  { id: 'observacion', label: 'Con observación' },
+];
+
+export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout, sinSeguridad = false, vista = 'dashboard', onNavegar, condicionInicial = 'todas' }) {
+  const [condicion, setCondicion] = useState(condicionInicial);
   const [colaEstudiantes, setColaEstudiantes] = useState([]);
   const [estudianteSeleccionado, setEstudianteSeleccionado] = useState(null);
   const [filtro, setFiltro] = useState('todas');
@@ -142,7 +150,8 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout, s
   };
 
   // R.123 y R.135: orden por riesgo o fecha, y filtro por estado de revisión.
-  const colaOrdenada = filtrarCola(ordenarCola(colaEstudiantes, orden), filtro);
+  const colaOrdenada = filtrarCondicion(filtrarCola(ordenarCola(colaEstudiantes, orden), filtro), condicion);
+  const med = estudianteSeleccionado?.mediciones || {};
 
   const kpiPendientes = colaEstudiantes.filter(e => estadoRevision(e) === 'pendiente').length;
   const kpiValidados = colaEstudiantes.filter(e => estadoRevision(e) !== 'pendiente').length;
@@ -217,7 +226,16 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout, s
                   </button>
                 ))}
              </div>
-             
+             <div aria-label="Filtrar por condición" className="px-4 py-2 flex items-center gap-2 border-b border-slate-100 bg-white">
+                <span className="text-[10px] font-bold text-slate-400 uppercase mr-1">Condición</span>
+                {CONDICIONES.map((c) => (
+                  <button key={c.id} onClick={() => setCondicion(c.id)} aria-pressed={condicion === c.id}
+                    className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${condicion === c.id ? 'bg-duoc-50 text-duoc-700 border-duoc-200' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>
+                    {c.label}
+                  </button>
+                ))}
+             </div>
+
              {colaOrdenada.length === 0 && (
                 <div className="p-8 text-center text-slate-400 text-sm">
                   {colaEstudiantes.length === 0 ? 'Esperando evaluaciones desde el Tótem...' : 'No hay evaluaciones en este filtro.'}
@@ -391,17 +409,28 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout, s
                     </ul>
                   </details>
                 )}
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">PA</span><span className={`text-xl font-bold ${obtenerColorMetrica('presion', estudianteSeleccionado.mediciones?.presionSys, estudianteSeleccionado.mediciones?.presionDia)}`}>{estudianteSeleccionado.mediciones?.presionSys || '--'}/{estudianteSeleccionado.mediciones?.presionDia || '--'}</span> <span className="text-xs text-slate-400 ml-1">mmHg</span></div>
-                  <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">FC REPOSO</span><span className={`text-xl font-bold ${obtenerColorMetrica('fc', estudianteSeleccionado.mediciones?.fcReposo)}`}>{estudianteSeleccionado.mediciones?.fcReposo || '--'}</span> <span className="text-xs text-slate-400 ml-1">lpm</span></div>
-                  <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">FC RECUP.</span><span className="text-xl font-bold text-slate-800">{estudianteSeleccionado.mediciones?.fcRecup || '--'}</span> <span className="text-xs text-slate-400 ml-1">lpm</span></div>
-                  <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">SpO₂</span><span className={`text-xl font-bold ${estudianteSeleccionado.mediciones?.spo2 != null && estudianteSeleccionado.mediciones.spo2 < 95 ? 'text-red-600' : 'text-slate-800'}`}>{estudianteSeleccionado.mediciones?.spo2 ?? '--'}</span> <span className="text-xs text-slate-400 ml-1">%</span></div>
-                  <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">PESO</span><span className="text-xl font-bold text-slate-800">{estudianteSeleccionado.mediciones?.peso || '--'}</span> <span className="text-xs text-slate-400 ml-1">kg</span></div>
-                  <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">ESTATURA</span><span className="text-xl font-bold text-slate-800">{estudianteSeleccionado.mediciones?.estatura || '--'}</span> <span className="text-xs text-slate-400 ml-1">cm</span></div>
-                  <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">IMC</span><span className={`text-xl font-bold ${obtenerColorMetrica('imc', estudianteSeleccionado.mediciones?.imc)}`}>{estudianteSeleccionado.mediciones?.imc || '--'}</span> <span className="text-xs text-slate-400 ml-1">kg/m²</span></div>
-                  <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">GRASA</span><span className="text-xl font-bold text-slate-800">{estudianteSeleccionado.mediciones?.grasa || '--'}</span> <span className="text-xs text-slate-400 ml-1">%</span></div>
-                  <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">MASA MUSCULAR</span><span className="text-xl font-bold text-slate-800">{estudianteSeleccionado.mediciones?.masaMuscular || '--'}</span> <span className="text-xs text-slate-400 ml-1">kg</span></div>
-                  <div className="border border-slate-200 p-3 rounded-lg bg-white"><span className="text-[10px] font-bold text-slate-400 block mb-1">VO₂ MÁX</span><span className="text-xl font-bold text-slate-800">{estudianteSeleccionado.mediciones?.vo2Max || '--'}</span> <span className="text-xs text-slate-400 ml-1">ml/kg</span></div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {[
+                    { et: 'PA', val: `${med.presionSys || '--'}/${med.presionDia || '--'}`, u: 'mmHg', color: obtenerColorMetrica('presion', med.presionSys, med.presionDia), icon: <IconoCorazon className="w-5 h-5" />, chip: 'bg-red-50 text-red-500' },
+                    { et: 'FC REPOSO', val: med.fcReposo || '--', u: 'lpm', color: obtenerColorMetrica('fc', med.fcReposo), icon: <IconoPulso className="w-5 h-5" />, chip: 'bg-red-50 text-red-500' },
+                    { et: 'FC RECUP.', val: med.fcRecup || '--', u: 'lpm', color: 'text-slate-800', icon: <IconoPulso className="w-5 h-5" />, chip: 'bg-red-50 text-red-500' },
+                    { et: 'SpO₂', val: med.spo2 ?? '--', u: '%', color: med.spo2 != null && med.spo2 < 95 ? 'text-red-600' : 'text-slate-800', icon: <IconoGota className="w-5 h-5" />, chip: 'bg-sky-50 text-sky-500' },
+                    { et: 'PESO', val: med.peso || '--', u: 'kg', color: 'text-slate-800', icon: <IconoBalanza className="w-5 h-5" />, chip: 'bg-duoc-50 text-duoc-700' },
+                    { et: 'ESTATURA', val: med.estatura || '--', u: 'cm', color: 'text-slate-800', icon: <IconoRegla className="w-5 h-5" />, chip: 'bg-duoc-50 text-duoc-700' },
+                    { et: 'IMC', val: med.imc || '--', u: 'kg/m²', color: obtenerColorMetrica('imc', med.imc), icon: <IconoPersona className="w-5 h-5" />, chip: 'bg-duoc-50 text-duoc-700' },
+                    { et: 'GRASA', val: med.grasa || '--', u: '%', color: 'text-slate-800', icon: <IconoGota className="w-5 h-5" />, chip: 'bg-amber-50 text-amber-500' },
+                    { et: 'MASA MUSCULAR', val: med.masaMuscular || '--', u: 'kg', color: 'text-slate-800', icon: <IconoPesa className="w-5 h-5" />, chip: 'bg-duoc-50 text-duoc-700' },
+                    { et: 'VO₂ MÁX', val: med.vo2Max || '--', u: 'ml/kg', color: 'text-slate-800', icon: <IconoRayo className="w-5 h-5" />, chip: 'bg-green-50 text-green-600' },
+                  ].map((x) => (
+                    <div key={x.et} className="border border-slate-200 p-3 rounded-xl bg-white flex items-center gap-3">
+                      <span className={`flex items-center justify-center w-9 h-9 rounded-lg shrink-0 ${x.chip}`}>{x.icon}</span>
+                      <div className="min-w-0">
+                        <span className="text-[10px] font-bold text-slate-400 block leading-tight">{x.et}</span>
+                        <span className={`text-lg font-bold ${x.color}`}>{x.val}</span>
+                        <span className="text-[11px] text-slate-400 ml-1">{x.u}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 

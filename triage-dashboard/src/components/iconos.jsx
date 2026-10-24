@@ -48,3 +48,29 @@ export function IconoExterno({ className }) {
 export function IconoNoticias({ className }) {
   return (<svg {...base} className={className}><path d="M4 4h12v16H6a2 2 0 0 1-2-2V4Z" /><path d="M16 8h3a1 1 0 0 1 1 1v9a2 2 0 0 1-2 2M8 8h4M8 12h4M8 16h4" /></svg>);
 }
+
+// --- Íconos de métricas (mediciones del tótem) ---
+export function IconoCorazon({ className }) {
+  return (<svg {...base} className={className}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3 5.5 5.5 0 0 0 12 5.5 5.5 5.5 0 0 0 7.5 3 5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z" /></svg>);
+}
+export function IconoPulso({ className }) {
+  return (<svg {...base} className={className}><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>);
+}
+export function IconoGota({ className }) {
+  return (<svg {...base} className={className}><path d="M12 2.5S5 10 5 14a7 7 0 0 0 14 0c0-4-7-11.5-7-11.5Z" /></svg>);
+}
+export function IconoBalanza({ className }) {
+  return (<svg {...base} className={className}><path d="M5 8h14l-1.6 11.2a1 1 0 0 1-1 .8H7.6a1 1 0 0 1-1-.8L5 8Z" /><path d="M9 8a3 3 0 0 1 6 0" /><path d="M12 12v4" /></svg>);
+}
+export function IconoRegla({ className }) {
+  return (<svg {...base} className={className}><path d="M3 9h18v6H3zM7 9v3M11 9v4M15 9v3M19 9v4" /></svg>);
+}
+export function IconoPersona({ className }) {
+  return (<svg {...base} className={className}><circle cx="12" cy="6" r="3.2" /><path d="M6 22v-1.5a6 6 0 0 1 12 0V22" /></svg>);
+}
+export function IconoPesa({ className }) {
+  return (<svg {...base} className={className}><path d="M6.5 6.5v11M3.5 9v6M17.5 6.5v11M20.5 9v6M6.5 12h11" /></svg>);
+}
+export function IconoRayo({ className }) {
+  return (<svg {...base} className={className}><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z" /></svg>);
+}

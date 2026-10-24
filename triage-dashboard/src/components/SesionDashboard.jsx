@@ -14,11 +14,18 @@ const SESION_ABIERTA = { token: null, rol: 'admin', usuario: 'Sin seguridad' };
 // Área autenticada: alterna entre la página de bienvenida (inicio) y el dashboard.
 function AppAutenticada({ sesion, sinSeguridad = false, backendUrl, onSesionInvalida, onLogout }) {
   const [vista, setVista] = useState('inicio');   // 'inicio' | 'dashboard'
+  const [condicion, setCondicion] = useState('todas');  // filtro de condición al entrar al dashboard
+
+  // onNavegar(destino, condicion?): al venir desde una tarjeta de condición, preselecciona el filtro.
+  const navegar = (destino, cond) => {
+    if (cond) setCondicion(cond);
+    setVista(destino);
+  };
 
   if (vista === 'dashboard') {
     return (
       <DashboardAptitud sesion={sesion} sinSeguridad={sinSeguridad}
-                        vista={vista} onNavegar={setVista}
+                        vista={vista} onNavegar={navegar} condicionInicial={condicion}
                         onSesionInvalida={onSesionInvalida} onLogout={onLogout} />
     );
   }
@@ -26,7 +33,7 @@ function AppAutenticada({ sesion, sinSeguridad = false, backendUrl, onSesionInva
   const authHeaders = sesion.token ? { Authorization: `Bearer ${sesion.token}` } : {};
   return (
     <Bienvenida sesion={sesion} sinSeguridad={sinSeguridad} backendUrl={backendUrl}
-                authHeaders={authHeaders} vista={vista} onNavegar={setVista}
+                authHeaders={authHeaders} vista={vista} onNavegar={navegar}
                 onSesionInvalida={onSesionInvalida} onLogout={onLogout} />
   );
 }
