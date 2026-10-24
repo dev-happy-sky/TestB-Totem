@@ -8,7 +8,7 @@ import { ETIQUETA_SEVERIDAD, coincidenciaIA, nivelConfianza, nombreCategoria, po
 import { hayCalibracionVencida, resumirDispositivos, resumirErrores } from '../lib/mediciones';
 import { describirContacto, etiquetaDias, horaLocal } from '../lib/formato';
 import { FILTROS, alertaPendiente, describirOrigen, duracionEvaluacion, estadoRevision, filtrarCola, filtrarCondicion, ordenarCola } from '../lib/cola';
-import { IconoCorazon, IconoPulso, IconoGota, IconoBalanza, IconoRegla, IconoPersona, IconoPesa, IconoRayo } from './iconos';
+import { IconoCorazon, IconoPulso, IconoGota, IconoBalanza, IconoRegla, IconoPersona, IconoPesa, IconoRayo, IconoReloj, IconoCheck, IconoAlerta, IconoCampana, IconoDiana } from './iconos';
 
 const CONDICIONES = [
   { id: 'todas', label: 'Todos' },
@@ -180,16 +180,17 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout, s
       )}
       <div className="flex gap-4 mb-6">
         {[
-          { l: 'POR VALIDAR', v: kpiPendientes, c: 'text-slate-800' },
-          { l: 'VALIDADOS', v: kpiValidados, c: 'text-green-500' }, 
-          { l: 'RIESGO ALTO (A1)', v: kpiDerivados, c: 'text-red-500' }, 
-          { l: 'ALERTAS PENDIENTES', v: kpiAlertas, c: 'text-orange-500' },
+          { l: 'POR VALIDAR', v: kpiPendientes, c: 'text-slate-800', icon: <IconoReloj className="w-4 h-4" />, chip: 'bg-slate-100 text-slate-500' },
+          { l: 'VALIDADOS', v: kpiValidados, c: 'text-green-500', icon: <IconoCheck className="w-4 h-4" />, chip: 'bg-green-50 text-green-600' },
+          { l: 'RIESGO ALTO (A1)', v: kpiDerivados, c: 'text-red-500', icon: <IconoAlerta className="w-4 h-4" />, chip: 'bg-red-50 text-red-500' },
+          { l: 'ALERTAS PENDIENTES', v: kpiAlertas, c: 'text-orange-500', icon: <IconoCampana className="w-4 h-4" />, chip: 'bg-orange-50 text-orange-500' },
           { l: 'COINCIDENCIA IA', v: coincidencia.porcentaje === null ? '--' : `${coincidencia.porcentaje}%`, c: 'text-slate-800',
-            s: `${coincidencia.coinciden} de ${coincidencia.total} casos cerrados` }
+            s: `${coincidencia.coinciden} de ${coincidencia.total} casos cerrados`, icon: <IconoDiana className="w-4 h-4" />, chip: 'bg-duoc-50 text-duoc-700' }
         ].map((kpi, i) => (
-          <div key={i} className="bg-white rounded-lg p-4 shadow-sm flex-1 border border-slate-100">
-            <span className="text-xs font-semibold text-slate-400 block mb-1">{kpi.l}</span>
-            <span className={`text-2xl font-bold ${kpi.c}`}>{kpi.v}</span>
+          <div key={i} className="bg-white rounded-xl p-4 shadow-sm flex-1 border border-slate-100">
+            <span className={`inline-flex items-center justify-center w-7 h-7 rounded-lg align-middle mr-2 ${kpi.chip}`}>{kpi.icon}</span>
+            <span className="text-xs font-semibold text-slate-400 align-middle">{kpi.l}</span>
+            <span className={`block text-2xl font-bold mt-2 ${kpi.c}`}>{kpi.v}</span>
             {kpi.s && <span className="text-[10px] text-slate-400 block">{kpi.s}</span>}
           </div>
         ))}

@@ -60,6 +60,7 @@ export default function Bienvenida({ sesion, backendUrl, authHeaders, sinSegurid
   const [evaluaciones, setEvaluaciones] = useState([]);
   const [perfil, setPerfil] = useState(null);
   const [cargando, setCargando] = useState(true);
+  const [noticias, setNoticias] = useState([]);
 
   useEffect(() => {
     let activo = true;
@@ -83,15 +84,32 @@ export default function Bienvenida({ sesion, backendUrl, authHeaders, sinSegurid
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Noticias reales del portal Duoc (ruta propia /api/noticias; si falla, queda vacío y se muestra el enlace).
+  useEffect(() => {
+    let activo = true;
+    fetch('/api/noticias')
+      .then((res) => (res.ok ? res.json() : { items: [] }))
+      .then((data) => { if (activo) setNoticias(Array.isArray(data?.items) ? data.items : []); })
+      .catch(() => {});
+    return () => { activo = false; };
+  }, []);
+
   const alumnos = useMemo(() => alumnosUnicos(evaluaciones), [evaluaciones]);
-  const stats = useMemo(() => ({
-    alumnos: alumnos.length,
-    porValidar: evaluaciones.filter((e) => estadoRevision(e) === 'pendiente').length,
-    alertas: evaluaciones.filter(alertaPendiente).length,
-    validados: evaluaciones.filter((e) => estadoRevision(e) !== 'pendiente').length,
-    buenas: alumnos.filter(buenaCondicion).length,
-    observacion: alumnos.filter(conObservacion).length,
-  }), [evaluaciones, alumnos]);
+  const stats = useMemo(() => {
+    const buenasList = alumnos.filter(buenaCondicion);
+    const obsList = alumnos.filter(conObservacion);
+    const cuenta = (lista, nivel) => lista.filter((a) => (a.nivelFinal || a.iaSugerida) === nivel).length;
+    return {
+      alumnos: alumnos.length,
+      porValidar: evaluaciones.filter((e) => estadoRevision(e) === 'pendiente').length,
+      alertas: evaluaciones.filter(alertaPendiente).length,
+      validados: evaluaciones.filter((e) => estadoRevision(e) !== 'pendiente').length,
+      buenas: buenasList.length,
+      observacion: obsList.length,
+      buenasA4: cuenta(buenasList, 'A4'), buenasA3: cuenta(buenasList, 'A3'),
+      obsA1: cuenta(obsList, 'A1'), obsA2: cuenta(obsList, 'A2'),
+    };
+  }, [evaluaciones, alumnos]);
 
   const nombre = primerNombre(perfil, sesion.usuario);
   const menu = sinSeguridad ? null : (
@@ -129,6 +147,12 @@ export default function Bienvenida({ sesion, backendUrl, authHeaders, sinSegurid
             </div>
             <p className="mt-3 font-bold text-duoc-800">Buenas condiciones</p>
             <p className="text-xs text-slate-500">Alumnos aptos, sin observaciones</p>
+            {!cargando && (
+              <div className="mt-2 flex gap-1.5">
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-green-100 text-green-700">A4 · {stats.buenasA4}</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700">A3 · {stats.buenasA3}</span>
+              </div>
+            )}
             <span className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-green-700">
               Ver alumnos <IconoFlecha className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
             </span>
@@ -141,6 +165,12 @@ export default function Bienvenida({ sesion, backendUrl, authHeaders, sinSegurid
             </div>
             <p className="mt-3 font-bold text-duoc-800">Con observación</p>
             <p className="text-xs text-slate-500">Requieren tu revisión o seguimiento</p>
+            {!cargando && (
+              <div className="mt-2 flex gap-1.5">
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700">A1 · {stats.obsA1}</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">A2 · {stats.obsA2}</span>
+              </div>
+            )}
             <span className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-amber-700">
               Ver alumnos <IconoFlecha className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
             </span>
@@ -152,21 +182,34 @@ export default function Bienvenida({ sesion, backendUrl, authHeaders, sinSegurid
           <aside className="lg:col-span-1 space-y-7 order-2 lg:order-1">
             <section>
               <Titulo>Noticias Duoc</Titulo>
-              <a href="https://www.duocuc.cl/" target="_blank" rel="noopener noreferrer"
-                 className="block bg-white rounded-xl border border-slate-200 overflow-hidden hover:border-duoc-300 transition group">
-                <div className="bg-duoc-700 px-4 py-3 flex items-center gap-2 text-white">
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="bg-duoc-700 px-4 py-2.5 flex items-center gap-2 text-white">
                   <IconoNoticias className="w-5 h-5 text-oro-400" />
                   <span className="font-semibold text-sm">Portal Duoc UC</span>
                 </div>
-                <div className="p-4">
-                  <p className="text-sm text-slate-600 leading-relaxed">
-                    Revisa las últimas noticias, becas y novedades institucionales en el sitio oficial de Duoc UC.
+                {noticias.length > 0 ? (
+                  <ul className="divide-y divide-slate-100">
+                    {noticias.map((n) => (
+                      <li key={n.url}>
+                        <a href={n.url} target="_blank" rel="noopener noreferrer"
+                           className="flex items-start gap-2 p-3 hover:bg-slate-50 transition group">
+                          <span aria-hidden className="text-oro-500 mt-0.5 shrink-0">•</span>
+                          <span className="flex-1 text-sm text-slate-700 leading-snug line-clamp-2 group-hover:text-duoc-800">{n.titulo}</span>
+                          <IconoExterno className="w-3.5 h-3.5 text-slate-300 mt-0.5 shrink-0" />
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="p-4 text-sm text-slate-600 leading-relaxed">
+                    Revisa las últimas noticias y novedades en el sitio oficial de Duoc UC.
                   </p>
-                  <span className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-duoc-700 group-hover:text-duoc-800">
-                    Ver noticias <IconoExterno className="w-4 h-4" />
-                  </span>
-                </div>
-              </a>
+                )}
+                <a href="https://www.duoc.cl/noticias/" target="_blank" rel="noopener noreferrer"
+                   className="flex items-center justify-between px-4 py-2.5 border-t border-slate-100 text-sm font-semibold text-duoc-700 hover:bg-slate-50">
+                  Ver todas las noticias <IconoExterno className="w-4 h-4" />
+                </a>
+              </div>
             </section>
 
             <section>
