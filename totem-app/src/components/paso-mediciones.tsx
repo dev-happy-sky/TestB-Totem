@@ -80,6 +80,7 @@ const mensajeEnVivo = (tipo: TipoSensor, motivo: LecturaEnVivo['motivo']): strin
   if (tipo === 'balanza') {
     return motivo === 'desconectado' ? 'Báscula no disponible' : 'Súbete a la báscula';
   }
+  if (tipo === 'tensiometro') return 'Puente del tensiómetro no disponible';
   if (motivo === 'desconectado') return 'Oxímetro no conectado';
   return motivo === 'sin_dedo' ? 'Coloca el dedo en el oxímetro' : 'Sin señal del oxímetro';
 };
@@ -91,6 +92,7 @@ const formatearTiempo = (segundos: number): string => {
 
 const textoEnVivo = (tipo: TipoSensor, vivo: LecturaEnVivo): string => {
   if (tipo === 'balanza') return `Peso ${vivo.peso?.toFixed(1)} kg`;
+  if (tipo === 'tensiometro') return vivo.estado ?? '';
   return `${tipo === 'oximetro' ? `SpO₂ ${vivo.spo2} %  ·  ` : ''}FC ${vivo.fc} lpm`;
 };
 

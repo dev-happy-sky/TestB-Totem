@@ -1166,3 +1166,28 @@ describe('prueba de esfuerzo guiada (prueba del escalón)', () => {
     expect(screen.getAllByText('PRUEBA DEL ESCALÓN')).toHaveLength(1);
   });
 });
+
+describe('tensiómetro: estado en vivo', () => {
+  const montarTensiometro = async (vivo: LecturaEnVivo) => {
+    const simulados = crearSensoresSimulados({ latenciaMs: 0, azar: () => 0.5 });
+    const tensiometro: Sensor = { ...simulados.tensiometro, tipo: 'tensiometro', disponible: async () => true, medir: simulados.tensiometro.medir.bind(simulados.tensiometro), enVivo: async () => vivo };
+    await render(<PasoMediciones sensores={{ ...simulados, tensiometro }} lecturas={{}} onLectura={jest.fn()} onError={jest.fn()} intervaloEnVivoMs={20} />);
+  };
+
+  test('indica cuándo pulsar Start', async () => {
+    // Arrange / Act
+    await montarTensiometro({ valida: true, estado: 'Listo: pulsa Start en el brazalete' });
+
+    // Assert
+    expect(await screen.findByText('Listo: pulsa Start en el brazalete')).toBeTruthy();
+    expect(screen.getByLabelText('En vivo Tensiómetro')).toBeTruthy();
+  });
+
+  test('avisa si el puente del tensiómetro no está disponible', async () => {
+    // Arrange / Act
+    await montarTensiometro({ valida: false, motivo: 'desconectado' });
+
+    // Assert
+    expect(await screen.findByText('Puente del tensiómetro no disponible')).toBeTruthy();
+  });
+});

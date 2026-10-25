@@ -28,8 +28,9 @@ def dispositivo(direccion=MAC):
 
 
 class ClienteFalso:
-    def __init__(self, dispositivo, falla_conexion=False, falla_notify=False):
-        self.dispositivo = dispositivo
+    def __init__(self, dispositivo, falla_conexion=False, falla_notify=False, usar_cache=True, fallos_notify=0, mensaje_notify="característica no disponible"):
+        self.dispositivo, self.usar_cache = dispositivo, usar_cache
+        self.fallos_notify, self.mensaje_notify, self.intentos_notify = fallos_notify, mensaje_notify, 0
         self.falla_conexion, self.falla_notify = falla_conexion, falla_notify
         self.is_connected = False
         self.callback = None
@@ -46,8 +47,9 @@ class ClienteFalso:
         self.emparejado = True
 
     async def start_notify(self, uuid, callback):
-        if self.falla_notify:
-            raise RuntimeError("característica no disponible")
+        self.intentos_notify += 1
+        if self.falla_notify or self.intentos_notify <= self.fallos_notify:
+            raise RuntimeError(self.mensaje_notify)
         self.uuid, self.callback = uuid, callback
 
     async def disconnect(self):
@@ -60,9 +62,9 @@ class Fabrica:
         self.guion = list(guion)     # opciones por cada cliente que se cree; luego, clientes sanos
         self.clientes = []
 
-    def __call__(self, disp):
+    def __call__(self, disp, usar_cache=True):
         opciones = self.guion.pop(0) if self.guion else {}
-        cliente = ClienteFalso(disp, **opciones)
+        cliente = ClienteFalso(disp, usar_cache=usar_cache, **opciones)
         self.clientes.append(cliente)
         return cliente
 
@@ -404,4 +406,63 @@ async def test_si_la_conexion_se_cuelga_se_abandona_a_tiempo_y_el_puente_sigue_e
     # Assert
     assert fabrica.clientes[0].desconexiones == 1
     assert len(fabrica.clientes) == 2 and tensiometro.conectado is True
+    await tensiometro.detener()
+
+
+async def test_si_windows_aun_no_lista_el_servicio_reintenta_la_suscripcion_en_la_misma_conexion():
+    # Arrange
+    fabrica, escaner = Fabrica({"fallos_notify": 2, "mensaje_notify": "Characteristic 2a35 was not found!"}), FabricaEscaner()
+    tensiometro = lector(fabrica, escaner)
+    await tensiometro.iniciar()
+    await ceder()
+
+    # Act
+    escaner.ver()
+    await ceder(30)
+
+    # Assert
+    assert len(fabrica.clientes) == 1 and fabrica.clientes[0].intentos_notify == 3 and tensiometro.conectado is True
+    await tensiometro.detener()
+
+
+async def test_si_la_suscripcion_nunca_funciona_se_rinde_tras_los_intentos_y_cierra_el_cliente():
+    # Arrange
+    fabrica, escaner = Fabrica({"falla_notify": True}), FabricaEscaner()
+    tensiometro = lector(fabrica, escaner)
+    await tensiometro.iniciar()
+    await ceder()
+
+    # Act
+    escaner.ver()
+    await ceder(30)
+
+    # Assert
+    assert fabrica.clientes[0].intentos_notify == 4 and fabrica.clientes[0].desconexiones == 1
+    await tensiometro.detener()
+
+
+async def test_pausa_el_escaner_mientras_conecta():
+    # Arrange
+    tensiometro, _, escaner = await con_aparato_conectado()
+
+    # Assert
+    assert escaner.escaneres[0].detenido is True
+    await tensiometro.detener()
+
+
+async def test_tras_no_encontrar_la_caracteristica_el_siguiente_intento_renueva_la_cache_y_luego_vuelve_a_la_cache():
+    # Arrange: el 1.º y el 2.º cliente fallan con «not found» en todos sus intentos; el 3.º ya sirve
+    no_esta = {"falla_notify": True, "mensaje_notify": "Characteristic 2a35 was not found!"}
+    fabrica, escaner = Fabrica(no_esta, no_esta), FabricaEscaner()
+    tensiometro = lector(fabrica, escaner)
+    await tensiometro.iniciar()
+    await ceder()
+
+    # Act
+    for _ in range(3):
+        escaner.ver()
+        await ceder(40)
+
+    # Assert
+    assert [c.usar_cache for c in fabrica.clientes[:3]] == [True, False, True]
     await tensiometro.detener()
