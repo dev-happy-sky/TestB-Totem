@@ -107,3 +107,30 @@ def test_limpiar_vacia_las_mediciones():
 
     # Assert
     assert captura.desde(-1) == []
+
+
+async def test_si_llegan_varias_mediciones_entrega_la_mas_reciente_segun_el_reloj_del_aparato():
+    # Arrange: el aparato manda primero una guardada más nueva en orden de llegada que la que acaba de medir
+    import datetime
+    reloj, captura = Reloj(), Captura(Reloj())
+    reciente = Muestra(126, 90, 70, True, fecha=datetime.datetime(2026, 10, 25, 4, 16, 30))
+    guardada = Muestra(118, 78, 72, True, fecha=datetime.datetime(2026, 10, 25, 4, 11, 0))
+    reloj.al_dormir = lambda t: (captura.agregar(reciente), captura.agregar(guardada)) if t == 0.5 else None
+
+    # Act
+    medicion = await esperar_medicion(captura, reloj, reloj.dormir, timeout_s=5)
+
+    # Assert
+    assert (medicion.sistolica, medicion.diastolica) == (126, 90)
+
+
+async def test_sin_fecha_entrega_la_ultima_que_llego():
+    # Arrange
+    reloj, captura = Reloj(), Captura(Reloj())
+    reloj.al_dormir = lambda t: (captura.agregar(Muestra(100, 60, 70, True)), captura.agregar(Muestra(126, 90, 70, True))) if t == 0.5 else None
+
+    # Act
+    medicion = await esperar_medicion(captura, reloj, reloj.dormir, timeout_s=5)
+
+    # Assert
+    assert (medicion.sistolica, medicion.diastolica) == (126, 90)

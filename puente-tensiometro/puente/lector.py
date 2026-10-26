@@ -24,7 +24,7 @@ ESPERA_CONEXION_S = 12.0          # tope para conectar o suscribirse: si el apar
 ESPERA_EMPAREJAR_S = 30.0
 INTENTOS_SUSCRIPCION = 4            # intentos de suscribirse en una misma conexión
 PAUSA_SUSCRIPCION_S = 0.6
-ANTIGUEDAD_MAXIMA_S = 600.0       # una medición con fecha más vieja que esto es una almacenada, de otra persona o de otro día
+ANTIGUEDAD_MAXIMA_S = 180.0       # una medición con fecha más vieja que esto es una almacenada, de otra persona o de otro momento
 
 
 def escaner_bleak(al_detectar):

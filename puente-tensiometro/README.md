@@ -36,7 +36,7 @@ python -m puente
 | `PUENTE_ORIGENES` | — | Orígenes CORS permitidos (solo si la app corre como web) |
 | `PUENTE_TIMEOUT_S` | `120` | Tiempo máximo que `/medir` espera la medición |
 | `PUENTE_EMPAREJAR` | desactivado | `true` para intentar emparejar en cada conexión. Mejor emparejar una vez con `python -m puente.emparejar` |
-| `PUENTE_ANTIGUEDAD_MAX_MIN` | `10` | Descarta mediciones con fecha más vieja que esto; `0` no descarta por fecha |
+| `PUENTE_ANTIGUEDAD_MAX_MIN` | `3` | Descarta mediciones con fecha más vieja que esto; `0` no descarta por fecha |
 
 Arranque automático en Windows: copia `puente.env.example` a `puente.env`, comprueba con `.\iniciar_puente.ps1 -Verificar` e instala con
 `.\instalar_inicio_automatico.ps1` (tarea `PuenteTensiometro`). Quitar: `.\quitar_inicio_automatico.ps1`. (Ya existe un `puente.env`
