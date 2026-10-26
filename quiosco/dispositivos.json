@@ -10,7 +10,7 @@
   },
   "tensiometro": {
     "id": "0C:7F:ED:74:07:54",
-    "activo": false,
-    "nota": "Beurer BM 54. Pasa a true cuando esté emparejado con ESTE PC (el vínculo Bluetooth es por equipo): ver puente-tensiometro/README.md."
+    "activo": true,
+    "nota": "Beurer BM 54. Probado y emparejado en el PC original. En un PC nuevo hay que emparejarlo antes con ESE PC (el vínculo Bluetooth es por equipo): ver puente-tensiometro/README.md; si no, ponlo en false."
   }
 }

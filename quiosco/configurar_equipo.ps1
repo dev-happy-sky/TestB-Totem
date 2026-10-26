@@ -5,7 +5,7 @@
 #   2. Instala las dependencias de los puentes y de la app.
 #   3. Crea los puente.env de cada puente con las direcciones de dispositivos.json.
 #   4. Fija en quiosco.env la IP de ESTE equipo (descarta la del PC anterior) y la clave de los puentes.
-#   5. Abre el firewall de Windows (pide permisos de administrador una sola vez).
+#   5. Abre el firewall de Windows y pasa la red de este equipo de Pública a Privada si hace falta (pide permisos de administrador).
 #   6. Compila la app apuntando a ESTE equipo (modo red, para la tablet).
 #   7. Arranca los puentes y la app, y comprueba que respondan.
 #
@@ -24,6 +24,14 @@ $python = if ($env:PUENTE_PYTHON) { $env:PUENTE_PYTHON } else { 'python' }
 $problemas = New-Object System.Collections.ArrayList
 $avisos = New-Object System.Collections.ArrayList
 $numeroPaso = 0
+
+# En Windows PowerShell 5.1, con $ErrorActionPreference='Stop' cualquier línea que un programa escriba por stderr (p. ej. el aviso de
+# "nueva versión de pip") se vuelve un error fatal. Estas llamadas solo deben fallar según su código de salida ($LASTEXITCODE).
+function Silencioso([scriptblock]$orden) {
+    $anterior = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $orden 2>&1 | Out-Null } finally { $ErrorActionPreference = $anterior }
+}
 
 function Paso([string]$texto) { $script:numeroPaso++; Write-Host "`n[$script:numeroPaso] $texto" -ForegroundColor Cyan }
 function Bien([string]$texto) { Write-Host "    OK  $texto" -ForegroundColor Green }
@@ -62,7 +70,7 @@ else {
         $requisitos = Join-Path $script:Raiz "$($script:CarpetasPuente[$nombre])\requirements.txt"
         if (-not (Test-Path $requisitos)) { Aviso "Sin requirements.txt en $($script:CarpetasPuente[$nombre])"; continue }
         if ($SoloVerificar) { Haria "pip install -r $($script:CarpetasPuente[$nombre])\requirements.txt"; continue }
-        & $python -m pip install --quiet -r $requisitos 2>&1 | Out-Null
+        Silencioso { & $python -m pip install --quiet --disable-pip-version-check -r $requisitos }
         if ($LASTEXITCODE -eq 0) { Bien "puente $nombre" } else { Falla "pip falló en $($script:CarpetasPuente[$nombre])" }
     }
     $moduloApp = Join-Path $script:Raiz 'totem-app\node_modules'
@@ -71,7 +79,7 @@ else {
     else {
         Cambia 'npm install en totem-app (tarda unos minutos)'
         Push-Location (Join-Path $script:Raiz 'totem-app')
-        try { npm install --no-audit --no-fund 2>&1 | Out-Null; if ($LASTEXITCODE -eq 0) { Bien 'totem-app' } else { Falla 'npm install falló en totem-app' } }
+        try { Silencioso { npm install --no-audit --no-fund }; if ($LASTEXITCODE -eq 0) { Bien 'totem-app' } else { Falla 'npm install falló en totem-app' } }
         finally { Pop-Location }
     }
 }
@@ -81,7 +89,7 @@ Paso 'Adaptador Bluetooth'
 if ($SinDependencias -or $problemas.Count -gt 0 -or $SoloVerificar) {
     Haria 'se comprueba al instalar las dependencias (necesita la librería bleak)'
 } else {
-    & $python -c "import asyncio; from bleak import BleakScanner; asyncio.run(BleakScanner.discover(timeout=2))" 2>&1 | Out-Null
+    Silencioso { & $python -c "import asyncio; from bleak import BleakScanner; asyncio.run(BleakScanner.discover(timeout=2))" }
     if ($LASTEXITCODE -eq 0) { Bien 'Bluetooth disponible y encendido' }
     else { Falla 'Este equipo no tiene Bluetooth LE o está apagado (Configuración -> Bluetooth y dispositivos).' }
 }
@@ -148,7 +156,17 @@ else {
 # Solo importa la red que usa la tablet: la del adaptador que tiene la IP de este equipo (no una VPN u otro adaptador).
 $indiceRed = if ($ipNueva) { (Get-NetIPAddress -IPAddress $ipNueva -ErrorAction SilentlyContinue | Select-Object -First 1).InterfaceIndex } else { $null }
 foreach ($red in @(Get-NetConnectionProfile -ErrorAction SilentlyContinue | Where-Object { $_.NetworkCategory -eq 'Public' -and $_.InterfaceIndex -eq $indiceRed })) {
-    Aviso "La red '$($red.Name)' está marcada como Pública y bloquea a la tablet. Como administrador: Set-NetConnectionProfile -InterfaceIndex $($red.InterfaceIndex) -NetworkCategory Private"
+    $cambiar = "Set-NetConnectionProfile -InterfaceIndex $($red.InterfaceIndex) -NetworkCategory Private"
+    if ($SinFirewall) { Aviso "La red '$($red.Name)' está como Pública y bloquea a la tablet. Como administrador: $cambiar"; continue }
+    if ($SoloVerificar) { Haria "la red '$($red.Name)' está como Pública: se cambiaría a Privada ($cambiar)"; continue }
+    Cambia "cambiando la red '$($red.Name)' de Pública a Privada (aparecerá la ventana de permisos de administrador)"
+    try {
+        if ($esAdmin) { Invoke-Expression $cambiar }
+        else { Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $cambiar }
+    } catch { Aviso "No se pudo cambiar la red a Privada (¿cancelaste los permisos?). Como administrador: $cambiar" }
+    $despues = Get-NetConnectionProfile -InterfaceIndex $red.InterfaceIndex -ErrorAction SilentlyContinue
+    if ($despues -and $despues.NetworkCategory -ne 'Public') { Bien "Red '$($red.Name)' ahora es $($despues.NetworkCategory)" }
+    else { Aviso "La red '$($red.Name)' sigue como Pública y bloquea a la tablet. Como administrador: $cambiar" }
 }
 
 # ----------------------------------------------------------------------------------------------- 6. compilar

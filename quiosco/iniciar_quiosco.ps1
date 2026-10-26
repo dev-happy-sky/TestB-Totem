@@ -29,6 +29,9 @@ if ($Red) {
 } else {
     $url = "http://localhost:$puerto"
     $env:PUENTE_ORIGENES = $url
+    # Sin -Red todo es local: borra lo que haya dejado un arranque anterior con -Red en esta misma consola (si no, los puentes
+    # seguirían escuchando en toda la red mientras la app solo escucha en localhost).
+    Remove-Item Env:PUENTE_HOST, Env:PUENTE_TOKEN -ErrorAction SilentlyContinue
     $direccionApp = '127.0.0.1'
 }
 
