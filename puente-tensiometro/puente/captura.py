@@ -3,6 +3,7 @@
 A diferencia del oxímetro y la báscula, el tensiómetro mide UNA vez y la entrega al terminar (de 30 s a un minuto después de
 que la persona pulse Start). No se guarda nada en disco: es un dato de salud y vive solo en memoria.
 """
+import datetime
 from collections import deque
 from dataclasses import dataclass
 from typing import Callable, Optional
@@ -53,7 +54,9 @@ async def esperar_medicion(captura: Captura, reloj: Callable[[], float], dormir,
     while True:
         recibidas = captura.desde(inicio)
         if recibidas:
-            muestra = recibidas[-1][1]
+            # Al suscribirse el aparato entrega primero sus mediciones guardadas: si llegan varias, vale la más reciente según SU reloj
+            # (y, si no manda fecha o empatan, la que llegó última).
+            muestra = max(enumerate(m for _, m in recibidas), key=lambda par: (par[1].fecha or datetime.datetime.min, par[0]))[1]
             if not muestra.valida:
                 raise ErrorMedicion(muestra.codigo or "lectura_invalida", muestra.motivo or "Lectura inválida. Repite la medición.")
             return Medicion(muestra.sistolica, muestra.diastolica, muestra.pulso)

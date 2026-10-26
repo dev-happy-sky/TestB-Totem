@@ -48,6 +48,8 @@ export type LecturaEnVivo = {
   fc?: number;
   /** Peso en kg (báscula). */
   peso?: number;
+  /** Texto de estado (tensiómetro: no entrega valores hasta terminar, solo indica si está listo para medir). */
+  estado?: string;
   /** Por qué no hay valor: el sensor no está conectado, no envía datos, no detecta el dedo o nadie está sobre la báscula. */
   motivo?: 'desconectado' | 'sin_senal' | 'sin_dedo' | 'sin_carga';
 };

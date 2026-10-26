@@ -22,7 +22,9 @@ PAUSA_TRAS_FALLO_S = 1.0          # mínimo entre dos intentos de conexión
 REINTENTO_ESCANER_S = 3.0         # si el escáner no arranca (Bluetooth apagado)
 ESPERA_CONEXION_S = 12.0          # tope para conectar o suscribirse: si el aparato se durmió, no se queda colgado casi un minuto
 ESPERA_EMPAREJAR_S = 30.0
-ANTIGUEDAD_MAXIMA_S = 600.0       # una medición con fecha más vieja que esto es una almacenada, de otra persona o de otro día
+INTENTOS_SUSCRIPCION = 4            # intentos de suscribirse en una misma conexión
+PAUSA_SUSCRIPCION_S = 0.6
+ANTIGUEDAD_MAXIMA_S = 180.0       # una medición con fecha más vieja que esto es una almacenada, de otra persona o de otro momento
 
 
 def escaner_bleak(al_detectar):
@@ -31,10 +33,13 @@ def escaner_bleak(al_detectar):
     return BleakScanner(detection_callback=al_detectar)
 
 
-def cliente_bleak(dispositivo):
-    """Cliente real. En Windows hay que pasarle el dispositivo que vio el escaneo (por dirección sola da "Device not found") y pedir
-    siempre el descubrimiento de servicios: la caché de una conexión sin vínculo no incluye el servicio de presión arterial."""
+def cliente_bleak(dispositivo, usar_cache: bool = True):
+    """Cliente real. En Windows hay que pasarle el dispositivo que vio el escaneo (por dirección sola da "Device not found").
+    Con el vínculo hecho, lo normal es usar la caché de servicios (así lo probó el BM 54 real); sin caché solo se pide el
+    descubrimiento completo si la caché quedó sin el servicio de presión arterial (ver `LectorTensiometro._conectar`)."""
     from bleak import BleakClient
+    if usar_cache:
+        return BleakClient(dispositivo)
     try:
         return BleakClient(dispositivo, winrt={"use_cached_services": False})
     except TypeError:   # otros sistemas operativos no aceptan la opción de Windows
@@ -60,6 +65,7 @@ class LectorTensiometro:
         self._escaner: Optional[object] = None
         self._escuchando = False
         self._avistado: Optional[object] = None      # último dispositivo visto, pendiente de atender
+        self._sin_cache = False                      # tras un «característica no encontrada», el próximo intento redescubre los servicios
         self._tarea: Optional[asyncio.Task] = None
 
     @property
@@ -103,22 +109,48 @@ class LectorTensiometro:
         logger.warning("Escuchando al tensiómetro")
         return True
 
+    async def _pausar_escaner(self):
+        escaner, self._escaner, self._escuchando = self._escaner, None, False
+        if escaner is not None:
+            try:
+                await escaner.stop()
+            except Exception:
+                pass
+
+    async def _suscribir(self, cliente):
+        """Suscribe a las mediciones. El aparato solo es visible un par de segundos, así que si Windows aún no listó el servicio de
+        presión arterial se reintenta sobre la MISMA conexión en vez de esperar a que vuelva a aparecer."""
+        for intento in range(INTENTOS_SUSCRIPCION):
+            try:
+                await asyncio.wait_for(cliente.start_notify(CARACTERISTICA_PRESION, self._al_recibir), self._espera_conexion_s)
+                return
+            except Exception as error:
+                if intento == INTENTOS_SUSCRIPCION - 1 or not getattr(cliente, "is_connected", True):
+                    raise
+                logger.warning("Suscripción pendiente, se reintenta (%s)", error or type(error).__name__)
+                await self._dormir(PAUSA_SUSCRIPCION_S)
+
     async def _conectar(self, dispositivo) -> bool:
         logger.warning("Tensiómetro visible: conectando")
-        cliente = self._factory(dispositivo)
+        await self._pausar_escaner()   # en Windows, escanear mientras se conecta deja la lista de servicios sin la presión arterial
+        sin_cache = self._sin_cache
+        cliente = self._factory(dispositivo, usar_cache=False) if sin_cache else self._factory(dispositivo)
         try:
             await asyncio.wait_for(cliente.connect(), self._espera_conexion_s)
             logger.warning("Tensiómetro conectado")
             if self._emparejar:
                 await asyncio.wait_for(cliente.pair(), ESPERA_EMPAREJAR_S)
-            await asyncio.wait_for(cliente.start_notify(CARACTERISTICA_PRESION, self._al_recibir), self._espera_conexion_s)
+            await self._suscribir(cliente)
         except Exception as error:   # incluye TimeoutError   # visible un par de segundos: puede cerrarse antes de terminar
             logger.warning("No se pudo completar la conexión con el tensiómetro: %s", error or type(error).__name__)
+            # Caché de servicios incompleta: el próximo intento la renueva; si ya se renovó y sigue sin aparecer, se vuelve a la caché.
+            self._sin_cache = "not found" in str(error).lower() and not sin_cache
             try:
                 await cliente.disconnect()
             except Exception:
                 pass
             return False
+        self._sin_cache = False
         self._cliente = cliente
         logger.warning("Suscrito a las mediciones: pulsa Start y espera el resultado")
         return True

@@ -29,7 +29,7 @@ def main() -> int:
     origenes = [o.strip() for o in os.getenv("PUENTE_ORIGENES", "").split(",") if o.strip()]
     lector = LectorTensiometro(
         direccion, emparejar=_verdadero(os.getenv("PUENTE_EMPAREJAR", "")),
-        antiguedad_maxima_s=float(os.getenv("PUENTE_ANTIGUEDAD_MAX_MIN", "10")) * 60,
+        antiguedad_maxima_s=float(os.getenv("PUENTE_ANTIGUEDAD_MAX_MIN", "3")) * 60,
     )
     app = crear_app(lector, token=token, origenes=origenes or None, timeout_s=float(os.getenv("PUENTE_TIMEOUT_S", "120")))
     uvicorn.run(app, host=host, port=int(os.getenv("PUENTE_PORT", "8767")))

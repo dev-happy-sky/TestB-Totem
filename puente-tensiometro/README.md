@@ -7,9 +7,9 @@ del tótem, se conecta al tensiómetro con `bleak` y entrega a la app la medici�
 tensiómetro ──BLE (presión arterial 0x1810)──▶ puente (Python) ──HTTP──▶ app del tótem ──▶ backend
 ```
 
-> **Estado: la lógica está escrita y probada con paquetes construidos según la especificación, pero el puente todavía NO se ha
-> conectado al aparato real.** Lo único medido: el BM 54 se ve por Bluetooth con el nombre `BM54` y anuncia el servicio estándar
-> de presión arterial (`0x1810`); la conexión desde el PC se agotó por tiempo, probablemente porque falta emparejarlo (ver más abajo).
+> **Estado: probado con el BM 54 real** (octubre de 2026): emparejado a nivel 3 desde Windows, el puente recibió una medición nueva
+> (`POST /medir` → 200 con sistólica, diastólica y pulso) y descartó las ~19 mediciones guardadas en el aparato por su fecha. Falta
+> comparar los valores con la pantalla del tensiómetro y probarlo con la app del tótem.
 
 ## Cómo funciona (distinto del oxímetro y la báscula)
 
@@ -36,7 +36,7 @@ python -m puente
 | `PUENTE_ORIGENES` | — | Orígenes CORS permitidos (solo si la app corre como web) |
 | `PUENTE_TIMEOUT_S` | `120` | Tiempo máximo que `/medir` espera la medición |
 | `PUENTE_EMPAREJAR` | desactivado | `true` para intentar emparejar en cada conexión. Mejor emparejar una vez con `python -m puente.emparejar` |
-| `PUENTE_ANTIGUEDAD_MAX_MIN` | `10` | Descarta mediciones con fecha más vieja que esto; `0` no descarta por fecha |
+| `PUENTE_ANTIGUEDAD_MAX_MIN` | `3` | Descarta mediciones con fecha más vieja que esto; `0` no descarta por fecha |
 
 Arranque automático en Windows: copia `puente.env.example` a `puente.env`, comprueba con `.\iniciar_puente.ps1 -Verificar` e instala con
 `.\instalar_inicio_automatico.ps1` (tarea `PuenteTensiometro`). Quitar: `.\quitar_inicio_automatico.ps1`. (Ya existe un `puente.env`
@@ -57,7 +57,7 @@ local con la MAC; no se sube a git.)
 
 No se guarda nada en disco ni en el log.
 
-## Formato (perfil estándar, sin verificar con el aparato)
+## Formato (perfil estándar, confirmado con el aparato)
 
 Característica `0x2A35` *Blood Pressure Measurement* (indicaciones): banderas, sistólica, diastólica y presión media como SFLOAT de 16 bits,
 y opcionales fecha/hora, pulso, id de usuario y estado de la medición (movimiento, manguito flojo, pulso irregular, posición). Detalle en
@@ -93,6 +93,8 @@ Después arranca el puente **sin** `PUENTE_EMPAREJAR`. Si más adelante vuelve e
 por ejemplo al enlazarlo con el celular), repite este paso.
 
 ## Diagnóstico
+
+Al suscribirse, el aparato entrega de golpe todas sus mediciones guardadas (con fecha): el puente las ignora por antigüedad. Mientras conecta pausa el escáner (en Windows, escanear a la vez deja la lista de servicios sin la presión arterial) y, si Windows aún no la lista, reintenta suscribirse hasta 4 veces sobre la misma conexión.
 
 El puente registra con marca de hora cada paso (no los valores): `Escuchando`, `Tensiómetro visible: conectando`, `Tensiómetro conectado`,
 `Suscrito a las mediciones`, `Medición recibida`. Conectar y suscribirse tienen un tope de 12 s; el aparato solo es visible un par de

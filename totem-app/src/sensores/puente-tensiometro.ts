@@ -1,4 +1,4 @@
-import { type Lectura, type Sensor } from './tipos';
+import { type Lectura, type LecturaEnVivo, type Sensor } from './tipos';
 import { medirPorPuente, pedirAlPuente, type ConfiguracionPuente } from './puente';
 
 /**
@@ -24,6 +24,22 @@ export class SensorTensiometroPuente implements Sensor {
       return Boolean(((await respuesta.json()) as { activo?: boolean }).activo);
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * El BM 54 no envía valores mientras mide (solo el resultado final), así que «en vivo» indica si el puente está escuchando y si el
+   * aparato ya está conectado, para saber cuándo pulsar Start.
+   */
+  async enVivo(): Promise<LecturaEnVivo> {
+    try {
+      const respuesta = await pedirAlPuente(this.config, '/estado', 'GET', this.config.timeoutEstadoMs ?? 3000);
+      if (!respuesta.ok) return { valida: false, motivo: 'desconectado' };
+      const cuerpo = (await respuesta.json()) as { activo?: boolean; conectado?: boolean };
+      if (!cuerpo.activo) return { valida: false, motivo: 'desconectado' };
+      return { valida: true, estado: cuerpo.conectado ? 'Tensiómetro conectado: pulsa Start en el brazalete' : 'Listo: pulsa Start en el brazalete' };
+    } catch {
+      return { valida: false, motivo: 'desconectado' };
     }
   }
 

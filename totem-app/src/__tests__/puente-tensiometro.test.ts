@@ -173,3 +173,31 @@ describe('crearSensores con el tensiómetro real', () => {
     expect(llamada(1)[1].headers['X-Puente-Key']).toBe('clave');
   });
 });
+
+describe('SensorTensiometroPuente.enVivo', () => {
+  test.each([
+    [{ activo: true, conectado: false }, 'Listo: pulsa Start en el brazalete'],
+    [{ activo: true, conectado: true }, 'Tensiómetro conectado: pulsa Start en el brazalete'],
+  ])('con el puente activo indica que está listo para medir (%j)', async (estado, texto) => {
+    // Arrange
+    global.fetch = responder(200, estado) as unknown as typeof fetch;
+
+    // Act
+    const vivo = await new SensorTensiometroPuente(CONFIG).enVivo();
+
+    // Assert
+    expect(vivo).toEqual({ valida: true, estado: texto });
+  });
+
+  test.each([
+    ['el puente no está activo', responder(200, { activo: false })],
+    ['el puente responde error', responder(500, {})],
+    ['no se llega al puente', jest.fn().mockRejectedValue(new Error('network'))],
+  ])('sin puente (%s) lo marca desconectado', async (_caso, simulado) => {
+    // Arrange
+    global.fetch = simulado as unknown as typeof fetch;
+
+    // Act / Assert
+    expect(await new SensorTensiometroPuente(CONFIG).enVivo()).toEqual({ valida: false, motivo: 'desconectado' });
+  });
+});
