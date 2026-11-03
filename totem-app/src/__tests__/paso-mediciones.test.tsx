@@ -83,12 +83,13 @@ describe('modo paso a paso (kiosco)', () => {
     for (let i = 0; i < 3; i++) await fireEvent.press(screen.getByLabelText('Siguiente medición')); // → balanza
 
     expect(screen.getByLabelText('Sensor Balanza')).toBeTruthy();
-    expect(screen.getByText(/ÍNDICE DE MASA CORPORAL/)).toBeTruthy();
-    expect(screen.getByText(/Pésate para calcular/)).toBeTruthy();
+    expect(screen.getByText(/Pésate para calcular/)).toBeTruthy();   // aún sin peso
 
     await fireEvent.press(screen.getByLabelText('Medir Balanza'));
     await screen.findByText('✓ Medición terminada correctamente');
-    expect(screen.queryByText(/Pésate para calcular/)).toBeNull();   // ya hay peso: la barra muestra el IMC
+    expect(screen.queryByText(/Pésate para calcular/)).toBeNull();
+    // 85 kg / 1,72² ≈ 28,7 → Sobrepeso (la línea muestra el estado)
+    expect(screen.getByText(/IMC .* · Sobrepeso/)).toBeTruthy();
   });
 });
 
