@@ -32,6 +32,66 @@ const montar = async (sensores: Sensores = crearSensoresSimulados({ latenciaMs: 
 
 const colorDe = (texto: RegExp | string) => StyleSheet.flatten(screen.getByText(texto).props.style).color;
 
+// Contenedor del modo kiosco: incluye la estatura (manual) y activa el paso a paso.
+function ContenedorKiosco({ sensores, alLeer, alFallar }: { sensores: Sensores; alLeer: (l: Lectura) => void; alFallar: (e: ErrorMedicion) => void }) {
+  const [lecturas, setLecturas] = useState<Partial<Record<TipoSensor, Lectura>>>({});
+  const [estatura, setEstatura] = useState<number | null>(null);
+  return (
+    <PasoMediciones
+      sensores={sensores}
+      lecturas={lecturas}
+      onLectura={(l) => { alLeer(l); setLecturas((previas) => ({ ...previas, [l.sensor]: l })); }}
+      onError={alFallar}
+      estaturaCm={estatura}
+      onEstatura={setEstatura}
+      pasoAPaso
+    />
+  );
+}
+const montarKiosco = async (sensores: Sensores = crearSensoresSimulados({ latenciaMs: 0, azar: () => 0.5 })) => {
+  const alLeer = jest.fn();
+  const alFallar = jest.fn();
+  await render(<ContenedorKiosco sensores={sensores} alLeer={alLeer} alFallar={alFallar} />);
+  return { sensores, alLeer, alFallar };
+};
+const guardarEstatura = async (texto = '172') => {
+  await fireEvent.changeText(screen.getByLabelText('Estatura manual'), texto);
+  await fireEvent.press(screen.getByLabelText('Guardar estatura'));
+};
+
+describe('modo paso a paso (kiosco)', () => {
+  test('muestra una medición a la vez y empieza por la estatura', async () => {
+    await montarKiosco();
+    expect(screen.getByLabelText('Estatura e IMC')).toBeTruthy();
+    expect(screen.queryByLabelText('Sensor Tensiómetro')).toBeNull();
+    expect(screen.getByLabelText('Medición 1 de 6')).toBeTruthy();
+  });
+
+  test('"Siguiente" avanza a la siguiente medición tras guardar la estatura', async () => {
+    await montarKiosco();
+    await guardarEstatura();
+    await fireEvent.press(screen.getByLabelText('Siguiente medición'));
+
+    expect(screen.getByLabelText('Sensor Tensiómetro')).toBeTruthy();
+    expect(screen.queryByLabelText('Estatura e IMC')).toBeNull();
+    expect(screen.getByLabelText('Medición 2 de 6')).toBeTruthy();
+  });
+
+  test('en la balanza aparece la barra de IMC y se completa al pesarse', async () => {
+    await montarKiosco();
+    await guardarEstatura('172');
+    for (let i = 0; i < 3; i++) await fireEvent.press(screen.getByLabelText('Siguiente medición')); // → balanza
+
+    expect(screen.getByLabelText('Sensor Balanza')).toBeTruthy();
+    expect(screen.getByText(/ÍNDICE DE MASA CORPORAL/)).toBeTruthy();
+    expect(screen.getByText(/Pésate para calcular/)).toBeTruthy();
+
+    await fireEvent.press(screen.getByLabelText('Medir Balanza'));
+    await screen.findByText('✓ Medición terminada correctamente');
+    expect(screen.queryByText(/Pésate para calcular/)).toBeNull();   // ya hay peso: la barra muestra el IMC
+  });
+});
+
 describe('PasoMediciones', () => {
   test('muestra los cuatro sensores con sus instrucciones y sin valores', async () => {
     // Arrange / Act

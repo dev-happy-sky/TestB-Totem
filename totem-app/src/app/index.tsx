@@ -421,6 +421,7 @@ export default function App({ inicio = 'bienvenida' }: { inicio?: 'bienvenida' |
             onError={(error) => setErroresMedicion((previos) => [...previos, error].slice(-50))}
             estaturaCm={estaturaCm}
             onEstatura={setEstaturaCm}
+            pasoAPaso={hayBienvenida}
           />
         </>
       ) : (
