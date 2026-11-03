@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import TarjetaEstatura from './tarjeta-estatura';
+import BarraIMC from './barra-imc';
 import {
   ErrorSensor, ETIQUETA_SENSOR, INSTRUCCIONES, TIEMPOS_DEL_CICLO, TIPOS_SENSOR, validarLectura,
   type CodigoError, type ErrorMedicion, type Lectura, type LecturaEnVivo, type ProgresoPrueba, type Sensores, type Sexo, type TipoSensor,
@@ -24,6 +25,8 @@ type Props = {
   /** Si se pasa `onEstatura`, se muestra la tarjeta para escribir la estatura a mano y calcular el IMC. */
   estaturaCm?: number | null;
   onEstatura?: (cm: number | null) => void;
+  /** Modo kiosco: una medición por pantalla, con "Siguiente". Por defecto se muestran todas a la vez. */
+  pasoAPaso?: boolean;
 };
 
 const COLOR_NORMAL = '#0f172a';
@@ -96,7 +99,8 @@ const textoEnVivo = (tipo: TipoSensor, vivo: LecturaEnVivo): string => {
   return `${tipo === 'oximetro' ? `SpO₂ ${vivo.spo2} %  ·  ` : ''}FC ${vivo.fc} lpm`;
 };
 
-export default function PasoMediciones({ sensores, lecturas, onLectura, onError, intervaloEnVivoMs = 1000, estaturaCm = null, onEstatura }: Props) {
+export default function PasoMediciones({ sensores, lecturas, onLectura, onError, intervaloEnVivoMs = 1000, estaturaCm = null, onEstatura, pasoAPaso = false }: Props) {
+  const [subPaso, setSubPaso] = useState(0);
   const [estados, setEstados] = useState<Partial<Record<TipoSensor, Estado>>>({});
   const [enVivo, setEnVivo] = useState<Partial<Record<TipoSensor, LecturaEnVivo>>>({});
   const [manuales, setManuales] = useState<Partial<Record<TipoSensor, Manual>>>({});
@@ -273,10 +277,13 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
     cerrarManual(tipo);
   };
 
-  return (
-    <View style={estilos.grid}>
-      {onEstatura && <TarjetaEstatura estaturaCm={estaturaCm} peso={lecturas.balanza?.valores.peso} onEstatura={onEstatura} />}
-      {TIPOS_SENSOR.map((tipo) => {
+  // IMC para la barra del paso de la balanza (peso de la báscula + estatura escrita a mano).
+  const pesoBalanza = Number(lecturas.balanza?.valores.peso);
+  const imcBarra = estaturaCm && Number.isFinite(pesoBalanza) && pesoBalanza > 0
+    ? pesoBalanza / Math.pow(estaturaCm / 100, 2)
+    : (Number.isFinite(Number(lecturas.balanza?.valores.imc)) ? Number(lecturas.balanza?.valores.imc) : null);
+
+  const renderSensor = (tipo: TipoSensor) => {
         const lectura = lecturas[tipo];
         const estado = estados[tipo] ?? { tipo: 'pendiente' };
         const etiqueta = ETIQUETA_SENSOR[tipo];
@@ -307,6 +314,8 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
                 );
               })}
             </View>
+
+            {pasoAPaso && tipo === 'balanza' && <BarraIMC imc={imcBarra} />}
 
             {!bloqueado && sensores[tipo].guia?.requiereSexo && estado.tipo !== 'midiendo' && (
               <View style={estilos.sexo} accessibilityRole="radiogroup" accessibilityLabel="Sexo para la prueba">
@@ -415,7 +424,43 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
             )}
           </View>
         );
-      })}
+  };
+
+  if (pasoAPaso) {
+    const pasos: ('estatura' | TipoSensor)[] = onEstatura ? ['estatura', ...TIPOS_SENSOR] : [...TIPOS_SENSOR];
+    const total = pasos.length;
+    const idx = Math.min(subPaso, total - 1);
+    const actual = pasos[idx];
+    const esUltimo = idx === total - 1;
+    const siguienteBloqueado = actual === 'estatura' && estaturaCm === null;
+    return (
+      <View>
+        {actual === 'estatura'
+          ? <TarjetaEstatura estaturaCm={estaturaCm} peso={lecturas.balanza?.valores.peso} onEstatura={onEstatura!} anchoCompleto />
+          : renderSensor(actual)}
+        <View style={estilos.subNav}>
+          <TouchableOpacity disabled={idx === 0} onPress={() => setSubPaso((p) => Math.max(0, p - 1))}
+            style={[estilos.subBtnSec, idx === 0 && estilos.subBtnOff]} accessibilityRole="button" accessibilityLabel="Medición anterior">
+            <Text style={estilos.subBtnSecTexto}>← Anterior</Text>
+          </TouchableOpacity>
+          <Text style={estilos.subContador} accessibilityLabel={`Medición ${idx + 1} de ${total}`}>{idx + 1} / {total}</Text>
+          {esUltimo ? (
+            <Text style={estilos.subFin}>Pulsa “Continuar” abajo</Text>
+          ) : (
+            <TouchableOpacity disabled={siguienteBloqueado} onPress={() => setSubPaso((p) => Math.min(total - 1, p + 1))}
+              style={[estilos.subBtn, siguienteBloqueado && estilos.botonBloqueado]} accessibilityRole="button" accessibilityLabel="Siguiente medición">
+              <Text style={estilos.subBtnTexto}>Siguiente →</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={estilos.grid}>
+      {onEstatura && <TarjetaEstatura estaturaCm={estaturaCm} peso={lecturas.balanza?.valores.peso} onEstatura={onEstatura} />}
+      {TIPOS_SENSOR.map(renderSensor)}
     </View>
   );
 }
@@ -464,4 +509,12 @@ const estilos = StyleSheet.create({
   enlace: { color: '#475569', fontSize: 13, textDecorationLine: 'underline', marginTop: 4 },
   manual: { marginTop: 4, padding: 10, borderRadius: 8, backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0' },
   entrada: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, fontSize: 18, minWidth: 80, color: '#0f172a', backgroundColor: '#fff' },
+  subNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, marginBottom: 8 },
+  subBtn: { backgroundColor: '#002c5f', paddingVertical: 12, paddingHorizontal: 22, borderRadius: 24 },
+  subBtnTexto: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  subBtnSec: { paddingVertical: 12, paddingHorizontal: 10 },
+  subBtnSecTexto: { color: '#475569', fontWeight: 'bold', fontSize: 16 },
+  subBtnOff: { opacity: 0 },
+  subContador: { fontSize: 13, fontWeight: 'bold', color: '#94a3b8' },
+  subFin: { fontSize: 14, color: '#002c5f', fontWeight: 'bold' },
 });

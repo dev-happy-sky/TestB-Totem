@@ -9,13 +9,15 @@ type Props = {
   /** Peso medido por la báscula (kg), si ya hay. */
   peso?: string;
   onEstatura: (cm: number | null) => void;
+  /** En el modo paso a paso la tarjeta ocupa todo el ancho. */
+  anchoCompleto?: boolean;
 };
 
 const COLOR_NORMAL = '#0f172a';
 const COLOR_ALERTA = '#ef4444';
 
 // Estatura escrita a mano (no hay sensor): con ella y el peso de la báscula se calcula el IMC.
-export default function TarjetaEstatura({ estaturaCm, peso, onEstatura }: Props) {
+export default function TarjetaEstatura({ estaturaCm, peso, onEstatura, anchoCompleto = false }: Props) {
   const [texto, setTexto] = useState('');
   const [error, setError] = useState('');
 
@@ -40,7 +42,7 @@ export default function TarjetaEstatura({ estaturaCm, peso, onEstatura }: Props)
   const imcAnormal = imc !== null && 'imc' in imc && (Number(imc.imc) >= 25 || Number(imc.imc) < 18.5);
 
   return (
-    <View style={estilos.tarjeta} accessibilityLabel="Estatura e IMC">
+    <View style={[estilos.tarjeta, anchoCompleto && estilos.anchoCompleto]} accessibilityLabel="Estatura e IMC">
       <Text style={estilos.titulo}>Estatura e IMC</Text>
       <Text style={estilos.instruccion}>
         Es el primer dato: mide tu estatura de pie y sin zapatos y escríbela en centímetros para desbloquear las demás mediciones.
@@ -88,6 +90,7 @@ export default function TarjetaEstatura({ estaturaCm, peso, onEstatura }: Props)
 
 const estilos = StyleSheet.create({
   tarjeta: { width: '48%', backgroundColor: '#fff', padding: 20, borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 15 },
+  anchoCompleto: { width: '100%' },
   titulo: { fontSize: 14, fontWeight: 'bold', color: '#1e293b', marginBottom: 8 },
   instruccion: { fontSize: 12, color: '#64748b', marginBottom: 12, lineHeight: 17 },
   fila: { flexDirection: 'row', flexWrap: 'wrap' },
