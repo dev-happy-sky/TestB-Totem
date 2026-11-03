@@ -34,7 +34,7 @@ export default function BarraIMC({ imc }: { imc: number | null }) {
   return (
     <View style={estilos.fila} accessibilityLabel={`IMC: ${cat.etiqueta}`}>
       <View style={estilos.track}>
-        <View style={{ flex: Math.max(0.001, pos), backgroundColor: cat.color, height: '100%', borderRadius: 999 }} />
+        <View style={{ flex: Math.max(0.001, pos), backgroundColor: cat.color, height: '100%' }} />
         <View style={{ flex: Math.max(0.001, 100 - pos) }} />
       </View>
       <Text style={[estilos.cond, { color: cat.color }]}>{cat.etiqueta}</Text>
