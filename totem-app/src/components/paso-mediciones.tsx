@@ -301,9 +301,12 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
             )}
 
             <View style={estilos.fila}>
-              {(pasoAPaso && tipo === 'balanza' ? CAMPOS[tipo].filter((c) => c.clave !== 'imc') : CAMPOS[tipo]).map((campo) => {
-                const valor = lectura?.valores[campo.clave];
-                const color = lectura && anormal(campo.clave, lectura.valores) ? COLOR_ALERTA : COLOR_NORMAL;
+              {CAMPOS[tipo].map((campo) => {
+                // En la balanza, el IMC se muestra calculado con la estatura (no el del sensor).
+                const esImcBalanza = tipo === 'balanza' && campo.clave === 'imc';
+                const valor = esImcBalanza && imcBarra != null ? imcBarra.toFixed(1) : lectura?.valores[campo.clave];
+                const valoresColor = esImcBalanza && imcBarra != null ? { imc: imcBarra.toFixed(1) } : lectura?.valores;
+                const color = valoresColor && anormal(campo.clave, valoresColor) ? COLOR_ALERTA : COLOR_NORMAL;
                 return (
                   <View key={campo.clave} style={estilos.campo}>
                     <Text style={estilos.etiqueta}>{campo.etiqueta}</Text>

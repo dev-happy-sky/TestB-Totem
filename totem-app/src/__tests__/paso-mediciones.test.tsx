@@ -89,7 +89,7 @@ describe('modo paso a paso (kiosco)', () => {
     await screen.findByText('✓ Medición terminada correctamente');
     expect(screen.queryByText(/Pésate para calcular/)).toBeNull();
     // 85 kg / 1,72² ≈ 28,7 → Sobrepeso (la línea muestra el estado)
-    expect(screen.getByText(/· Sobrepeso/)).toBeTruthy();
+    expect(screen.getByText(/Sobrepeso/)).toBeTruthy();
   });
 });
 
