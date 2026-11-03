@@ -1324,8 +1324,8 @@ describe('estatura primero: bloquea el resto de las mediciones hasta escribirla'
     const texto = JSON.stringify(orden);
 
     // Assert
-    expect(texto.indexOf('Estatura e IMC')).toBeGreaterThan(-1);
-    expect(texto.indexOf('Estatura e IMC')).toBeLessThan(texto.indexOf('Tensiómetro'));
+    expect(texto.indexOf('Estatura')).toBeGreaterThan(-1);
+    expect(texto.indexOf('Estatura')).toBeLessThan(texto.indexOf('Tensiómetro'));
   });
 
   test('cambiar la estatura vuelve a bloquear las demás mediciones hasta guardarla otra vez', async () => {
@@ -1419,22 +1419,23 @@ describe('estatura primero: bloquea el resto de las mediciones hasta escribirla'
     expect(cuerpo.mediciones.estatura).toBe('172.5');
   });
 
-  test('si se cambia el peso después, el IMC se recalcula con la misma estatura', async () => {
+  test('si se cambia el peso después, el IMC enviado se recalcula con la misma estatura', async () => {
     // Arrange
     usarBasculaSoloPeso();
     conEnvio();
     await llegarAlPaso2({ estatura: '172' });
     await medirTodo();
-    expect(screen.getByText(/^18\.2 /)).toBeTruthy();
 
     // Act: otra medición de peso
     (crearSensores as jest.Mock).mock.results.at(-1)!.value.balanza.medir = async () => ({
       sensor: 'balanza', valores: { peso: '70.0' }, dispositivo: { id: 'E0:D3', calibracion: 'desconocida' }, capturadoEn: new Date().toISOString(),
     });
     await medir('Balanza');
+    await fireEvent.press(screen.getByText('Continuar →'));
+    const cuerpo = await avanzarYEnviar();
 
     // Assert: 70,0 / 1,72² = 23,7
-    expect(await screen.findByText(/^23\.7 /)).toBeTruthy();
+    expect(cuerpo.mediciones).toMatchObject({ peso: '70.0', imc: '23.7', estatura: '172.0' });
   });
 });
 

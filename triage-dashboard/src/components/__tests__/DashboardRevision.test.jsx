@@ -369,9 +369,11 @@ describe('campos del modelo de datos', () => {
     await screen.findAllByText('Socio 1');
 
     // Assert
-    for (const [etiqueta, valor] of [['PESO', '70.0'], ['ESTATURA', '172.0'], ['MASA MUSCULAR', '30.5'], ['GRASA', '20.0'], ['IMC', '24.0'], ['VO₂ MÁX', '40.0']]) {
+    for (const [etiqueta, valor] of [['PESO', '70.0'], ['ESTATURA', '172.0'], ['MASA MUSCULAR', '30.5'], ['GRASA', '20.0'], ['VO₂ MÁX', '40.0']]) {
       expect(screen.getByText(etiqueta).nextSibling).toHaveTextContent(valor);
     }
+    // El IMC ya no es una celda de la grilla: se muestra como barra de estado (18.5–24.9 = Normopeso).
+    expect(screen.getByText(/· Normopeso/)).toBeInTheDocument();
   });
 
   test('las mediciones faltantes se muestran como guiones', async () => {

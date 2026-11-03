@@ -9,7 +9,7 @@ import { ETIQUETA_SEVERIDAD, coincidenciaIA, nivelConfianza, nombreCategoria, po
 import { hayCalibracionVencida, resumirDispositivos, resumirErrores } from '../lib/mediciones';
 import { describirContacto, etiquetaDias, horaLocal } from '../lib/formato';
 import { FILTROS, alertaPendiente, describirOrigen, duracionEvaluacion, estadoRevision, filtrarCola, filtrarCondicion, ordenarCola } from '../lib/cola';
-import { IconoCorazon, IconoPulso, IconoGota, IconoBalanza, IconoRegla, IconoPersona, IconoPesa, IconoRayo, IconoReloj, IconoCheck, IconoAlerta, IconoCampana, IconoDiana } from './iconos';
+import { IconoCorazon, IconoPulso, IconoGota, IconoBalanza, IconoRegla, IconoPesa, IconoRayo, IconoReloj, IconoCheck, IconoAlerta, IconoCampana, IconoDiana } from './iconos';
 
 const CONDICIONES = [
   { id: 'todas', label: 'Todos' },
@@ -419,7 +419,6 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout, s
                     { et: 'SpO₂', val: med.spo2 ?? '--', u: '%', color: med.spo2 != null && med.spo2 < 95 ? 'text-red-600' : 'text-slate-800', icon: <IconoGota className="w-5 h-5" />, chip: 'bg-sky-50 text-sky-500' },
                     { et: 'PESO', val: med.peso || '--', u: 'kg', color: 'text-slate-800', icon: <IconoBalanza className="w-5 h-5" />, chip: 'bg-duoc-50 text-duoc-700' },
                     { et: 'ESTATURA', val: med.estatura || '--', u: 'cm', color: 'text-slate-800', icon: <IconoRegla className="w-5 h-5" />, chip: 'bg-duoc-50 text-duoc-700' },
-                    { et: 'IMC', val: med.imc || '--', u: 'kg/m²', color: obtenerColorMetrica('imc', med.imc), icon: <IconoPersona className="w-5 h-5" />, chip: 'bg-duoc-50 text-duoc-700' },
                     { et: 'GRASA', val: med.grasa || '--', u: '%', color: 'text-slate-800', icon: <IconoGota className="w-5 h-5" />, chip: 'bg-amber-50 text-amber-500' },
                     { et: 'MASA MUSCULAR', val: med.masaMuscular || '--', u: 'kg', color: 'text-slate-800', icon: <IconoPesa className="w-5 h-5" />, chip: 'bg-duoc-50 text-duoc-700' },
                     { et: 'VO₂ MÁX', val: med.vo2Max || '--', u: 'ml/kg', color: 'text-slate-800', icon: <IconoRayo className="w-5 h-5" />, chip: 'bg-green-50 text-green-600' },

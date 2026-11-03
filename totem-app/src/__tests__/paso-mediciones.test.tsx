@@ -62,7 +62,7 @@ const guardarEstatura = async (texto = '172') => {
 describe('modo paso a paso (kiosco)', () => {
   test('muestra una medición a la vez y empieza por la estatura', async () => {
     await montarKiosco();
-    expect(screen.getByLabelText('Estatura e IMC')).toBeTruthy();
+    expect(screen.getByLabelText('Estatura')).toBeTruthy();
     expect(screen.queryByLabelText('Sensor Tensiómetro')).toBeNull();
     expect(screen.getByLabelText('Medición 1 de 6')).toBeTruthy();
   });
@@ -73,7 +73,7 @@ describe('modo paso a paso (kiosco)', () => {
     await fireEvent.press(screen.getByLabelText('Siguiente medición'));
 
     expect(screen.getByLabelText('Sensor Tensiómetro')).toBeTruthy();
-    expect(screen.queryByLabelText('Estatura e IMC')).toBeNull();
+    expect(screen.queryByLabelText('Estatura')).toBeNull();
     expect(screen.getByLabelText('Medición 2 de 6')).toBeTruthy();
   });
 
@@ -89,7 +89,7 @@ describe('modo paso a paso (kiosco)', () => {
     await screen.findByText('✓ Medición terminada correctamente');
     expect(screen.queryByText(/Pésate para calcular/)).toBeNull();
     // 85 kg / 1,72² ≈ 28,7 → Sobrepeso (la línea muestra el estado)
-    expect(screen.getByText(/IMC .* · Sobrepeso/)).toBeTruthy();
+    expect(screen.getByText(/· Sobrepeso/)).toBeTruthy();
   });
 });
 
@@ -634,7 +634,7 @@ describe('estatura manual e IMC', () => {
     await montar();
 
     // Assert
-    expect(screen.queryByLabelText('Estatura e IMC')).toBeNull();
+    expect(screen.queryByLabelText('Estatura')).toBeNull();
   });
 
   test('con onEstatura aparece la tarjeta, sin valores inventados', async () => {
@@ -642,9 +642,9 @@ describe('estatura manual e IMC', () => {
     await montarEstatura();
 
     // Assert
-    expect(screen.getByLabelText('Estatura e IMC')).toBeTruthy();
+    expect(screen.getByLabelText('Estatura')).toBeTruthy();
     expect(screen.getByLabelText('Estatura manual')).toBeTruthy();
-    expect(screen.getAllByText('--', { exact: false }).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText('--', { exact: false }).length).toBeGreaterThanOrEqual(1);
   });
 
   test('guarda la estatura escrita en centímetros (acepta coma)', async () => {
@@ -673,47 +673,14 @@ describe('estatura manual e IMC', () => {
       expect(alCambiar).not.toHaveBeenCalled();
     });
 
-  test('con estatura y peso muestra el IMC calculado', async () => {
-    // Arrange / Act
-    await montarEstatura({ peso: true, estatura: 172 });
-
-    // Assert
-    expect(screen.getByText(/^172 /)).toBeTruthy();
-    expect(screen.getByText(/^18\.2 /)).toBeTruthy();
-    expect(screen.getByLabelText('Cambiar estatura')).toBeTruthy();
-    expect(screen.queryByLabelText('Estatura manual')).toBeNull();
-  });
-
-  test('un IMC fuera del rango normal se resalta en rojo', async () => {
-    // Arrange / Act: 53,7 kg a 172 cm = 18,2 (< 18,5)
-    await montarEstatura({ peso: true, estatura: 172 });
-
-    // Assert
-    expect(colorDe(/^18\.2 /)).toBe('#ef4444');
-  });
-
-  test('un IMC normal no se resalta', async () => {
-    // Arrange / Act: 53,7 kg a 160 cm = 21,0
-    await montarEstatura({ peso: true, estatura: 160 });
-
-    // Assert
-    expect(colorDe(/^21\.0 /)).toBe('#0f172a');
-  });
-
-  test('con estatura pero sin peso avisa que falta pesarse', async () => {
+  test('con la estatura ya guardada muestra "Cambiar estatura" y oculta el input', async () => {
     // Arrange / Act
     await montarEstatura({ estatura: 172 });
 
     // Assert
-    expect(screen.getByText(/Falta el peso/)).toBeTruthy();
-  });
-
-  test('un IMC imposible muestra el error', async () => {
-    // Arrange / Act: 53,7 kg a 250 cm = 8,6
-    await montarEstatura({ peso: true, estatura: 250 });
-
-    // Assert
-    expect((await screen.findByRole('alert')).props.children).toContain('fuera de lo posible');
+    expect(screen.getByText(/^172 /)).toBeTruthy();
+    expect(screen.getByLabelText('Cambiar estatura')).toBeTruthy();
+    expect(screen.queryByLabelText('Estatura manual')).toBeNull();
   });
 
   test('cambiar la estatura la borra para volver a escribirla', async () => {
