@@ -301,7 +301,7 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
             )}
 
             <View style={estilos.fila}>
-              {CAMPOS[tipo].map((campo) => {
+              {(pasoAPaso && tipo === 'balanza' ? CAMPOS[tipo].filter((c) => c.clave !== 'imc') : CAMPOS[tipo]).map((campo) => {
                 const valor = lectura?.valores[campo.clave];
                 const color = lectura && anormal(campo.clave, lectura.valores) ? COLOR_ALERTA : COLOR_NORMAL;
                 return (
