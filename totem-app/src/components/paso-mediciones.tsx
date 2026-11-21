@@ -240,8 +240,9 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
 
   // Paso a paso: mientras un sensor mide se cubre la pantalla con un cuadro grande (cronómetro del escalón, aviso del tensiómetro
   // o "Midiendo…" según el sensor), en vez de un texto chico en la esquina de la tarjeta.
-  const overlayMidiendo = () => {
-    const tipo = TIPOS_SENSOR.find((t) => estados[t]?.tipo === 'midiendo');
+  const overlayMidiendo = (soloTipo?: TipoSensor | 'estatura') => {
+    const candidatos = soloTipo ? (soloTipo === 'estatura' ? [] : [soloTipo]) : TIPOS_SENSOR;
+    const tipo = candidatos.find((t) => estados[t]?.tipo === 'midiendo');
     if (!tipo) return null;
     const guiada = !!sensores[tipo].guia;
     return (
@@ -273,6 +274,56 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
                 <Text style={estilos.botonSecundarioTexto}>Cancelar prueba</Text>
               </TouchableOpacity>
             )}
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
+  // Intro de una prueba guiada (la prueba del escalón): antes de empezar se muestra a pantalla completa, como una alerta, con las
+  // instrucciones, el sexo y el botón para iniciar. Al pulsar Iniciar pasa a 'midiendo' y toma su lugar el cuadro del cronómetro.
+  const overlayIntroGuiada = (soloTipo?: TipoSensor | 'estatura') => {
+    const candidatos = soloTipo ? (soloTipo === 'estatura' ? [] : [soloTipo]) : TIPOS_SENSOR;
+    const tipo = candidatos.find((t) => {
+      const e = (estados[t] ?? { tipo: 'pendiente' }).tipo;
+      return sensores[t].guia && !bloqueado && !lecturas[t] && e !== 'midiendo' && e !== 'desconectado';
+    });
+    if (!tipo) return null;
+    const estado = estados[tipo] ?? { tipo: 'pendiente' as const };
+    const guia = sensores[tipo].guia!;
+    const sinSexo = !!guia.requiereSexo && !sexos[tipo];
+    const texto = estado.tipo === 'error' ? 'Reintentar' : 'Iniciar la prueba';
+    return (
+      <Modal visible transparent animationType="fade" onRequestClose={() => {}}>
+        <View style={estilos.overlay} accessibilityLabel={`Prueba guiada ${ETIQUETA_SENSOR[tipo]}`}>
+          <View style={estilos.overlayCuadro}>
+            <View style={estilos.guia}>
+              <Text style={estilos.guiaTitulo}>{guia.nombre.toUpperCase()}</Text>
+              {guia.instrucciones.map((linea) => <Text key={linea} style={estilos.guiaLinea}>• {linea}</Text>)}
+            </View>
+            {guia.requiereSexo && (
+              <View style={estilos.sexo} accessibilityRole="radiogroup" accessibilityLabel="Sexo para la prueba">
+                <Text style={estilos.etiqueta}>SEXO (PARA CALCULAR EL RESULTADO)</Text>
+                <View style={estilos.fila}>
+                  {(['hombre', 'mujer'] as const).map((opcion) => (
+                    <TouchableOpacity
+                      key={opcion} style={[estilos.opcion, sexos[tipo] === opcion && estilos.opcionActiva]} onPress={() => elegirSexo(tipo, opcion)}
+                      accessibilityRole="radio" accessibilityState={{ selected: sexos[tipo] === opcion }}
+                      accessibilityLabel={`Sexo para la prueba: ${opcion === 'hombre' ? 'Hombre' : 'Mujer'}`}>
+                      <Text style={[estilos.opcionTexto, sexos[tipo] === opcion && estilos.opcionTextoActiva]}>{opcion === 'hombre' ? 'Hombre' : 'Mujer'}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+            {estado.tipo === 'error' && (
+              <Text style={estilos.error} accessibilityRole="alert">No se pudo medir: {estado.mensaje}. Intenta nuevamente.</Text>
+            )}
+            <TouchableOpacity style={[estilos.boton, sinSexo && estilos.botonBloqueado, { alignSelf: 'center', marginTop: 16 }]} disabled={sinSexo}
+                              onPress={() => medir(tipo)} accessibilityRole="button" accessibilityState={{ disabled: sinSexo }}
+                              accessibilityLabel={`${texto.split(' ')[0]} prueba del escalón`}>
+              <Text style={estilos.botonTexto}>{texto}</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -334,12 +385,6 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
             <Text style={estilos.titulo}>{etiqueta}</Text>
             {bloqueado && <Text style={estilos.candado} accessibilityRole="text">🔒 Primero ingresa tu estatura</Text>}
             <Text style={estilos.instruccion}>{INSTRUCCIONES[tipo]}</Text>
-            {sensores[tipo].guia && (
-              <View style={estilos.guia}>
-                <Text style={estilos.guiaTitulo}>{sensores[tipo].guia!.nombre.toUpperCase()}</Text>
-                {sensores[tipo].guia!.instrucciones.map((linea) => <Text key={linea} style={estilos.guiaLinea}>• {linea}</Text>)}
-              </View>
-            )}
 
             <View style={estilos.fila}>
               {CAMPOS[tipo].map((campo) => {
@@ -361,22 +406,6 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
 
             {pasoAPaso && tipo === 'balanza' && <BarraIMC imc={imcBarra} />}
 
-            {!bloqueado && sensores[tipo].guia?.requiereSexo && estado.tipo !== 'midiendo' && (
-              <View style={estilos.sexo} accessibilityRole="radiogroup" accessibilityLabel="Sexo para la prueba">
-                <Text style={estilos.etiqueta}>SEXO (PARA CALCULAR EL RESULTADO)</Text>
-                <View style={estilos.fila}>
-                  {(['hombre', 'mujer'] as const).map((opcion) => (
-                    <TouchableOpacity
-                      key={opcion} style={[estilos.opcion, sexos[tipo] === opcion && estilos.opcionActiva]} onPress={() => elegirSexo(tipo, opcion)}
-                      accessibilityRole="radio" accessibilityState={{ selected: sexos[tipo] === opcion }}
-                      accessibilityLabel={`Sexo para la prueba: ${opcion === 'hombre' ? 'Hombre' : 'Mujer'}`}>
-                      <Text style={[estilos.opcionTexto, sexos[tipo] === opcion && estilos.opcionTextoActiva]}>{opcion === 'hombre' ? 'Hombre' : 'Mujer'}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            )}
-
             {!bloqueado && sensores[tipo].enVivo && enVivo[tipo] && (
               <View style={estilos.enVivo} accessibilityLabel={`En vivo ${etiqueta}`}>
                 <Text style={estilos.enVivoTitulo}>EN VIVO</Text>
@@ -393,7 +422,7 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
                 Sensor desconectado. Revisa que esté encendido y cerca del tótem.
               </Text>
             )}
-            {!bloqueado && estado.tipo === 'error' && (
+            {!bloqueado && estado.tipo === 'error' && !sensores[tipo].guia && (
               <Text style={estilos.error} accessibilityRole="alert">No se pudo medir: {estado.mensaje}. Intenta nuevamente.</Text>
             )}
             {estado.tipo === 'pendiente' && lectura && (
@@ -441,6 +470,8 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
             ) : (
               (() => {
                 const guiada = !!sensores[tipo].guia;
+                // La prueba guiada arranca desde la alerta de intro a pantalla completa; en la tarjeta solo queda "Repetir" tras un resultado.
+                if (guiada && !lectura) return null;
                 const sinSexo = !!sensores[tipo].guia?.requiereSexo && !sexos[tipo];
                 const sinPulsar = bloqueado || sinSexo;
                 const texto = estado.tipo === 'error' ? 'Reintentar' : lectura ? (guiada ? 'Repetir la prueba' : 'Volver a medir') : (guiada ? 'Iniciar la prueba' : 'Medir');
@@ -466,7 +497,8 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
     const siguienteBloqueado = actual === 'estatura' && estaturaCm === null;
     return (
       <View>
-        {overlayMidiendo()}
+        {overlayMidiendo(actual)}
+        {overlayIntroGuiada(actual)}
         {actual === 'estatura'
           ? <TarjetaEstatura estaturaCm={estaturaCm} peso={lecturas.balanza?.valores.peso} onEstatura={onEstatura!} anchoCompleto />
           : renderSensor(actual)}
@@ -492,6 +524,7 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
   return (
     <View style={estilos.grid}>
       {overlayMidiendo()}
+      {overlayIntroGuiada()}
       {onEstatura && <TarjetaEstatura estaturaCm={estaturaCm} peso={lecturas.balanza?.valores.peso} onEstatura={onEstatura} />}
       {TIPOS_SENSOR.map(renderSensor)}
     </View>
