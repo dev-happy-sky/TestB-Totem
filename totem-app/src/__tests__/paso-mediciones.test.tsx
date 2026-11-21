@@ -994,7 +994,7 @@ describe('prueba de esfuerzo guiada (prueba del escalón)', () => {
     // Assert
     expect(screen.getByText('PRUEBA DEL ESCALÓN')).toBeTruthy();
     expect(screen.getByText(/escalón o banco de unos 40 cm/)).toBeTruthy();
-    expect(screen.getByText(/durante 3 minutos/)).toBeTruthy();
+    expect(screen.getByText(/durante 1 minuto/)).toBeTruthy();
   });
 
   test('pide el sexo y no deja iniciar hasta elegirlo', async () => {

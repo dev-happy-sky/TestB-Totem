@@ -46,9 +46,9 @@ describe('estimarVO2Max (Queen\'s College Step Test)', () => {
 });
 
 describe('parámetros de la prueba', () => {
-  test('dura 3 minutos y espera 10 s antes de medir el pulso', () => {
+  test('dura 1 minuto y espera 10 s antes de medir el pulso', () => {
     // Arrange / Act / Assert
-    expect(DURACION_PRUEBA_S).toBe(180);
+    expect(DURACION_PRUEBA_S).toBe(60);
     expect(ESPERA_SENTARSE_S).toBe(10);
   });
 
@@ -100,7 +100,7 @@ describe('SensorEscalon', () => {
     expect(sensor.guia.nombre).toBe('Prueba del escalón');
     expect(sensor.guia.requiereSexo).toBe(true);
     expect(sensor.guia.instrucciones.join(' ')).toMatch(/40 cm/);
-    expect(sensor.guia.instrucciones.join(' ')).toMatch(/3 minutos/);
+    expect(sensor.guia.instrucciones.join(' ')).toMatch(/1 minuto/);
   });
 
   test('está disponible solo si lo está el oxímetro que mide el pulso', async () => {
@@ -163,7 +163,7 @@ describe('SensorEscalon', () => {
     expect(lectura.capturadoEn).toBe(fc.capturadoEn);
   });
 
-  test('espera los 3 minutos y los 10 s antes de pedir el pulso al oxímetro', async () => {
+  test('espera el minuto y los 10 s antes de pedir el pulso al oxímetro', async () => {
     // Arrange
     const tiempo = relojFalso();
     let momentoDeLaMedicion = -1;
@@ -175,8 +175,8 @@ describe('SensorEscalon', () => {
     await sensor.medir();
 
     // Assert
-    expect(momentoDeLaMedicion).toBeGreaterThanOrEqual((180 + 10) * 1000);
-    expect(momentoDeLaMedicion).toBeLessThan((180 + 10) * 1000 + 1000);
+    expect(momentoDeLaMedicion).toBeGreaterThanOrEqual((60 + 10) * 1000);
+    expect(momentoDeLaMedicion).toBeLessThan((60 + 10) * 1000 + 1000);
   });
 
   test('si el oxímetro se desconectó durante la prueba, espera a que vuelva a conectarse antes de medir', async () => {
@@ -210,7 +210,7 @@ describe('SensorEscalon', () => {
     // Assert
     expect(error).toMatchObject({ codigo: 'desconectado' });
     expect(oximetro.llamadas).toBe(1);
-    expect(tiempo.reloj()).toBeLessThan((180 + 10 + 2) * 1000 + 1000);
+    expect(tiempo.reloj()).toBeLessThan((60 + 10 + 2) * 1000 + 1000);
   });
 
   test('la duración y la espera se pueden ajustar', async () => {
@@ -293,7 +293,7 @@ describe('SensorEscalon', () => {
     expect(error).toBeInstanceOf(ErrorSensor);
     expect(error.message).toBe('Prueba cancelada.');
     expect(oximetro.llamadas).toBe(0);
-    expect(pasos).toBeLessThan(10);                  // no siguió contando hasta los 3 minutos
+    expect(pasos).toBeLessThan(10);                  // no siguió contando hasta el final del minuto
     expect(sensor.progreso()).toBeNull();
   });
 

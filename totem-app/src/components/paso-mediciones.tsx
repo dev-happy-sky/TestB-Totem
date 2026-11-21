@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import TarjetaEstatura from './tarjeta-estatura';
 import BarraIMC from './barra-imc';
@@ -238,6 +238,47 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
     );
   };
 
+  // Paso a paso: mientras un sensor mide se cubre la pantalla con un cuadro grande (cronómetro del escalón, aviso del tensiómetro
+  // o "Midiendo…" según el sensor), en vez de un texto chico en la esquina de la tarjeta.
+  const overlayMidiendo = () => {
+    const tipo = TIPOS_SENSOR.find((t) => estados[t]?.tipo === 'midiendo');
+    if (!tipo) return null;
+    const guiada = !!sensores[tipo].guia;
+    return (
+      <Modal visible transparent animationType="fade" onRequestClose={() => {}}>
+        <View style={estilos.overlay} accessibilityLabel="Midiendo" accessibilityLiveRegion="polite">
+          <View style={estilos.overlayCuadro}>
+            {guiada && sensores[tipo].progreso ? (
+              <View style={estilos.progreso} accessibilityLabel={`Progreso ${ETIQUETA_SENSOR[tipo]}`}>{panelProgreso(progresos[tipo])}</View>
+            ) : (
+              <>
+                <ActivityIndicator size="large" color="#002c5f" />
+                <Text style={estilos.overlayTitulo}>
+                  {tipo === 'tensiometro' ? 'Esperando la medición: pulsa Start en el tensiómetro…' : 'Midiendo…'}
+                </Text>
+                <Text style={estilos.overlaySensor}>{ETIQUETA_SENSOR[tipo]}</Text>
+                <Text style={estilos.overlayAyuda}>Mantén la posición y quédate quieto hasta que termine.</Text>
+              </>
+            )}
+            {tipo === 'tensiometro' && (
+              <View style={estilos.overlayAviso}>
+                <Text style={estilos.overlayAvisoTexto}>
+                  Cuando el tensiómetro termine, apretá M1 y luego M2 (o al revés, según cuál era el original) y después apretá START para enviar los datos.
+                </Text>
+              </View>
+            )}
+            {guiada && (
+              <TouchableOpacity style={[estilos.boton, estilos.botonSecundario, { marginLeft: 0 }]} onPress={() => cancelarPrueba(tipo)}
+                                accessibilityRole="button" accessibilityLabel="Cancelar la prueba del escalón">
+                <Text style={estilos.botonSecundarioTexto}>Cancelar prueba</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
   // Escribir a mano cancela la medición automática que siga esperando (por ejemplo el tensiómetro, que espera hasta 2 minutos).
   const abrirManual = (tipo: TipoSensor) => {
     cancelarMedicion(tipo);
@@ -336,10 +377,6 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
               </View>
             )}
 
-            {estado.tipo === 'midiendo' && sensores[tipo].progreso && (
-              <View style={estilos.progreso} accessibilityLabel={`Progreso ${etiqueta}`}>{panelProgreso(progresos[tipo])}</View>
-            )}
-
             {!bloqueado && sensores[tipo].enVivo && enVivo[tipo] && (
               <View style={estilos.enVivo} accessibilityLabel={`En vivo ${etiqueta}`}>
                 <Text style={estilos.enVivoTitulo}>EN VIVO</Text>
@@ -396,16 +433,7 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
               </TouchableOpacity>
             ))}
 
-            {estado.tipo === 'midiendo' && sensores[tipo].guia ? (
-              <TouchableOpacity style={[estilos.boton, estilos.botonSecundario, { marginLeft: 0 }]} onPress={() => cancelarPrueba(tipo)}
-                                accessibilityRole="button" accessibilityLabel="Cancelar la prueba del escalón">
-                <Text style={estilos.botonSecundarioTexto}>Cancelar prueba</Text>
-              </TouchableOpacity>
-            ) : estado.tipo === 'midiendo' ? (
-              <Text style={estilos.midiendo}>
-                {tipo === 'tensiometro' ? 'Esperando la medición: pulsa Start en el tensiómetro…' : 'Midiendo…'}
-              </Text>
-            ) : estado.tipo === 'desconectado' ? (
+            {estado.tipo === 'midiendo' ? null : estado.tipo === 'desconectado' ? (
               <TouchableOpacity style={[estilos.boton, bloqueado && estilos.botonBloqueado]} disabled={bloqueado} onPress={() => revisarConexion([tipo])}
                                 accessibilityRole="button" accessibilityState={{ disabled: bloqueado }}>
                 <Text style={estilos.botonTexto}>Reintentar conexión</Text>
@@ -438,6 +466,7 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
     const siguienteBloqueado = actual === 'estatura' && estaturaCm === null;
     return (
       <View>
+        {overlayMidiendo()}
         {actual === 'estatura'
           ? <TarjetaEstatura estaturaCm={estaturaCm} peso={lecturas.balanza?.valores.peso} onEstatura={onEstatura!} anchoCompleto />
           : renderSensor(actual)}
@@ -462,6 +491,7 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
 
   return (
     <View style={estilos.grid}>
+      {overlayMidiendo()}
       {onEstatura && <TarjetaEstatura estaturaCm={estaturaCm} peso={lecturas.balanza?.valores.peso} onEstatura={onEstatura} />}
       {TIPOS_SENSOR.map(renderSensor)}
     </View>
@@ -480,7 +510,13 @@ const estilos = StyleSheet.create({
   unidad: { fontSize: 12, color: '#94a3b8', fontWeight: 'normal' },
   error: { color: '#dc2626', fontSize: 13, fontWeight: '600', marginVertical: 6 },
   exito: { color: '#16a34a', fontSize: 13, fontWeight: '600', marginVertical: 6 },
-  midiendo: { color: '#002c5f', fontWeight: 'bold', marginTop: 8 },
+  overlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.78)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  overlayCuadro: { width: '100%', maxWidth: 560, backgroundColor: '#fff', borderRadius: 24, paddingVertical: 48, paddingHorizontal: 32, alignItems: 'center' },
+  overlayTitulo: { fontSize: 30, fontWeight: 'bold', color: '#0f172a', marginTop: 24, textAlign: 'center' },
+  overlaySensor: { fontSize: 18, fontWeight: 'bold', color: '#002c5f', letterSpacing: 1, marginTop: 8, textTransform: 'uppercase' },
+  overlayAyuda: { fontSize: 16, color: '#64748b', marginTop: 16, textAlign: 'center', lineHeight: 24 },
+  overlayAviso: { marginTop: 24, backgroundColor: '#eef3fb', borderWidth: 1, borderColor: '#aec6e6', borderRadius: 12, padding: 16 },
+  overlayAvisoTexto: { fontSize: 15, color: '#06386d', textAlign: 'center', lineHeight: 22, fontWeight: '600' },
   boton: { backgroundColor: '#002c5f', paddingVertical: 10, paddingHorizontal: 18, borderRadius: 24, alignSelf: 'flex-start', marginTop: 8 },
   botonTexto: { color: '#fff', fontWeight: 'bold' },
   botonSecundario: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', marginLeft: 8 },
