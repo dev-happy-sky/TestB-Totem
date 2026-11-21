@@ -4,7 +4,7 @@ import {
 } from './tipos';
 
 /**
- * Prueba del escalón (Queen's College Step Test): se sube y baja un escalón de ~40 cm durante 1 minuto al ritmo de un metrónomo y,
+ * Prueba del escalón (Queen's College Step Test): se sube y baja un escalón de ~40 cm durante 3 minutos al ritmo de un metrónomo y,
  * al terminar, se mide el pulso de recuperación. El VO₂ máx se ESTIMA a partir de ese pulso; no es una medición directa.
  *
  *   hombres: VO₂ máx = 111,33 − 0,42 × FC        mujeres: VO₂ máx = 65,81 − 0,1847 × FC      (FC en lpm; resultado en ml/kg·min)
@@ -12,7 +12,7 @@ import {
  * La prueba original cuenta el pulso 15 s empezando 5 s después de terminar (×4); aquí se dejan 10 s para sentarse y colocar el dedo en el oxímetro, y luego lo mide.
  * El sexo solo se usa en la fórmula: no se guarda en ninguna parte.
  */
-export const DURACION_PRUEBA_S = 60;
+export const DURACION_PRUEBA_S = 180;
 export const ESPERA_SENTARSE_S = 10;
 /** El oxímetro se apaga solo si no tiene el dedo: tras la prueba se le da este margen para encenderse y reconectarse. */
 export const ESPERA_CONEXION_S = 90;
@@ -40,7 +40,7 @@ export const GUIA_ESCALON: GuiaPrueba = {
   duracionS: DURACION_PRUEBA_S,
   instrucciones: [
     'Usa un escalón o banco de unos 40 cm, firme y estable.',
-    'Sube y baja durante 1 minuto al ritmo que marca la pantalla (arriba, arriba, abajo, abajo).',
+    'Sube y baja durante 3 minutos al ritmo que marca la pantalla (arriba, arriba, abajo, abajo).',
     'Al terminar, siéntate y coloca el dedo en el oxímetro: medimos tu pulso de recuperación.',
   ],
   requiereSexo: true,
