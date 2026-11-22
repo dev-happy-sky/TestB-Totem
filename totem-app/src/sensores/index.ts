@@ -24,13 +24,20 @@ export { SensorSimulado, crearSensoresSimulados, type FallaSimulada, type Opcion
  *    EXPO_PUBLIC_PUENTE_TENSIOMETRO_URL / _KEY.
  *  Con "oximetro_puente", la prueba de esfuerzo pasa a ser la prueba del escalón (mide el pulso de recuperación con ese oxímetro).
  *  Se pueden combinar separados por coma ("oximetro_puente,bascula_puente"). Los sensores sin adaptador siguen simulados.
+ *
+ *  EXPO_PUBLIC_SIMULAR_LATENCIA_MS: cuánto tarda (ms) una medición simulada; por defecto 700. Súbelo (p. ej. 60000) para que el
+ *  cuadro "Midiendo" se quede en pantalla y poder probar su flujo (el botón "Cancelar medición", el aviso del tensiómetro…) sin hardware.
  */
 export function crearSensores(): Sensores {
   const modo = process.env.EXPO_PUBLIC_SENSORES ?? 'simulado';
   const probabilidad = Number(process.env.EXPO_PUBLIC_SIMULAR_FALLAS ?? 0);
-  const simulados = crearSensoresSimulados({ latenciaMs: 700, probabilidadFalla: Number.isFinite(probabilidad) ? probabilidad : 0 });
-  const modos = modo.split(',').map((m) => m.trim()).filter(Boolean);
-  const desconocido = modos.find((m) => !['simulado', 'oximetro_puente', 'bascula_puente', 'tensiometro_puente'].includes(m));
+  const latencia = Number(process.env.EXPO_PUBLIC_SIMULAR_LATENCIA_MS ?? 700);
+  const simulados = crearSensoresSimulados({
+    latenciaMs: Number.isFinite(latencia) && latencia >= 0 ? latencia : 700,
+    probabilidadFalla: Number.isFinite(probabilidad) ? probabilidad : 0,
+  });
+  const modos = modo.split(',').map((m: string) => m.trim()).filter(Boolean);
+  const desconocido = modos.find((m: string) => !['simulado', 'oximetro_puente', 'bascula_puente', 'tensiometro_puente'].includes(m));
   if (desconocido || modos.length === 0) {
     throw new Error(`Modo de sensores no soportado: "${desconocido ?? modo}". Usa "simulado", "oximetro_puente", "bascula_puente" o "tensiometro_puente".`);
   }

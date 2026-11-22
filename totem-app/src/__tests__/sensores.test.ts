@@ -169,9 +169,12 @@ describe('SensorSimulado', () => {
 
 describe('crearSensores', () => {
   const original = process.env.EXPO_PUBLIC_SENSORES;
+  const originalLatencia = process.env.EXPO_PUBLIC_SIMULAR_LATENCIA_MS;
   afterEach(() => {
     if (original === undefined) delete process.env.EXPO_PUBLIC_SENSORES;
     else process.env.EXPO_PUBLIC_SENSORES = original;
+    if (originalLatencia === undefined) delete process.env.EXPO_PUBLIC_SIMULAR_LATENCIA_MS;
+    else process.env.EXPO_PUBLIC_SIMULAR_LATENCIA_MS = originalLatencia;
   });
 
   test('por defecto usa el simulador', () => {
@@ -183,6 +186,35 @@ describe('crearSensores', () => {
 
     // Assert
     expect(Object.keys(sensores)).toHaveLength(5);
+  });
+
+  test('EXPO_PUBLIC_SIMULAR_LATENCIA_MS alarga la latencia de la medición simulada', async () => {
+    // Arrange: una latencia alta para poder dejar el cuadro "Midiendo" en pantalla y probar su flujo sin hardware.
+    jest.useFakeTimers();
+    try {
+      delete process.env.EXPO_PUBLIC_SENSORES;
+      process.env.EXPO_PUBLIC_SIMULAR_LATENCIA_MS = '8000';
+      const sensores = crearSensores();
+
+      // Act: la medición no resuelve hasta que pasa la latencia configurada.
+      let listo = false;
+      sensores.oximetro.medir().then(() => { listo = true; });
+
+      await jest.advanceTimersByTimeAsync(7000);
+      expect(listo).toBe(false);
+      await jest.advanceTimersByTimeAsync(1500);
+
+      // Assert
+      expect(listo).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('una latencia inválida cae al valor por defecto (no rompe)', () => {
+    // Arrange / Act / Assert
+    process.env.EXPO_PUBLIC_SIMULAR_LATENCIA_MS = 'abc';
+    expect(() => crearSensores()).not.toThrow();
   });
 
   test('un modo que aún no existe se informa con claridad', () => {
