@@ -1,6 +1,6 @@
 import { Alert, Platform } from 'react-native';
 
-import { mostrarAlerta } from '../utils/dialogo';
+import { mostrarAlerta, registrarAlertaHost, type Alerta } from '../utils/dialogo';
 
 type VentanaFalsa = { alert: jest.Mock; confirm: jest.Mock };
 const ventana = (confirmar = true): VentanaFalsa => ({ alert: jest.fn(), confirm: jest.fn().mockReturnValue(confirmar) });
@@ -13,6 +13,7 @@ const conPlataforma = (os: string, v?: VentanaFalsa) => {
 afterEach(() => {
   jest.restoreAllMocks();
   delete (globalThis as unknown as { window?: unknown }).window;
+  registrarAlertaHost(null);
 });
 
 describe('mostrarAlerta en el teléfono y la tablet instalada', () => {
@@ -152,5 +153,24 @@ describe('mostrarAlerta en la versión web (donde Alert.alert no hace nada)', ()
     // Act / Assert
     expect(() => mostrarAlerta('Aviso', 'Texto')).not.toThrow();
     expect(() => mostrarAlerta('Aviso', 'Texto', [{ text: 'a' }, { text: 'b' }])).not.toThrow();
+  });
+});
+
+describe('mostrarAlerta en web con un AlertaHost montado', () => {
+  test('le manda la alerta al host y no usa el diálogo del navegador', () => {
+    // Arrange
+    const v = ventana();
+    conPlataforma('web', v);
+    const recibidas: Alerta[] = [];
+    registrarAlertaHost((a) => recibidas.push(a));
+    const botones = [{ text: 'Volver a medir', style: 'cancel' as const }, { text: 'Continuar sin ellas' }];
+
+    // Act
+    mostrarAlerta('Faltan mediciones', 'Aún no se midió: Tensiómetro.', botones);
+
+    // Assert
+    expect(recibidas).toEqual([{ titulo: 'Faltan mediciones', mensaje: 'Aún no se midió: Tensiómetro.', botones }]);
+    expect(v.alert).not.toHaveBeenCalled();
+    expect(v.confirm).not.toHaveBeenCalled();
   });
 });

@@ -12,6 +12,7 @@ import {
 } from '../sensores';
 import { formatearFechaEntrada, isoADisplay, parseFechaNacimiento, telefonoValido } from '../utils/fecha';
 import { mostrarAlerta } from '../utils/dialogo';
+import AlertaHost from '../components/alerta-modal';
 import { opcionesPlan } from '../utils/planes';
 import { matriculaValida, MENSAJE_MATRICULA, normalizarMatricula } from '../utils/matricula';
 
@@ -523,11 +524,10 @@ export default function App({ inicio = 'bienvenida' }: { inicio?: 'bienvenida' |
     );
   };
 
-  if (pantalla === 'bienvenida') {
-    return <BienvenidaTotem onComenzar={comenzar} />;
-  }
-
+  // AlertaHost va fuera del cambio de pantalla para que una alerta (p. ej. la final "¡Éxito!") siga visible aunque se vuelva al inicio.
   return (
+    <>
+      {pantalla === 'bienvenida' ? <BienvenidaTotem onComenzar={comenzar} /> : (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <View style={styles.brandRow}>
@@ -575,6 +575,9 @@ export default function App({ inicio = 'bienvenida' }: { inicio?: 'bienvenida' |
         )}
       </View>
     </SafeAreaView>
+      )}
+      <AlertaHost />
+    </>
   );
 }
 
