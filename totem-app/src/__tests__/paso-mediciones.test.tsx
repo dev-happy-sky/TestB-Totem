@@ -144,6 +144,25 @@ describe('PasoMediciones', () => {
     await screen.findByText('✓ Medición terminada correctamente');
   });
 
+  test('si la medición se queda esperando, "Cancelar medición" corta y deja volver a medir', async () => {
+    // Arrange: un tensiómetro que nunca resuelve (como cuando no conecta)
+    const sensores = crearSensoresSimulados({ latenciaMs: 0 });
+    const colgada: Sensor = {
+      tipo: 'tensiometro', disponible: async () => true,
+      medir: () => new Promise<Lectura>(() => {}),
+    };
+    await montar({ ...sensores, tensiometro: colgada });
+
+    // Act: inicia la medición y luego la cancela desde el cuadro a pantalla completa
+    fireEvent.press(screen.getByLabelText('Medir Tensiómetro'));
+    await screen.findByText('Esperando la medición: pulsa Start en el tensiómetro…');
+    await fireEvent.press(screen.getByLabelText('Cancelar la medición de Tensiómetro'));
+
+    // Assert: el cuadro desaparece y se puede medir de nuevo
+    expect(screen.queryByText('Esperando la medición: pulsa Start en el tensiómetro…')).toBeNull();
+    expect(screen.getByLabelText('Medir Tensiómetro')).toBeTruthy();
+  });
+
   test('un fallo avisa al padre con sensor, código, mensaje y hora, y permite reintentar', async () => {
     // Arrange
     const { alFallar } = await montar(crearSensoresSimulados({ latenciaMs: 0, guion: { balanza: ['movimiento'] } }));

@@ -268,10 +268,16 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
                 </Text>
               </View>
             )}
-            {guiada && (
+            {guiada ? (
               <TouchableOpacity style={[estilos.boton, estilos.botonSecundario, { marginLeft: 0 }]} onPress={() => cancelarPrueba(tipo)}
                                 accessibilityRole="button" accessibilityLabel="Cancelar la prueba del escalón">
                 <Text style={estilos.botonSecundarioTexto}>Cancelar prueba</Text>
+              </TouchableOpacity>
+            ) : (
+              // Si el sensor se queda esperando (p. ej. el tensiómetro no conecta), este botón corta la medición y vuelve a 'pendiente' para reintentar.
+              <TouchableOpacity style={[estilos.boton, estilos.botonSecundario, { marginLeft: 0, marginTop: 24 }]} onPress={() => cancelarPrueba(tipo)}
+                                accessibilityRole="button" accessibilityLabel={`Cancelar la medición de ${ETIQUETA_SENSOR[tipo]}`}>
+                <Text style={estilos.botonSecundarioTexto}>Cancelar medición</Text>
               </TouchableOpacity>
             )}
           </View>
