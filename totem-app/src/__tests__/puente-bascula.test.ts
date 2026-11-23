@@ -213,3 +213,60 @@ describe('crearSensores con la báscula real', () => {
     expect(() => crearSensores()).toThrow('"bluetooth"');
   });
 });
+
+describe('SensorBasculaPuente.cancelar', () => {
+  // Un /medir que se queda esperando hasta que la app corta la petición (como hace el puente con una medición que no llega).
+  const colgada = () => jest.fn((_url: string, init: { signal: AbortSignal }) => new Promise((_resolver, rechazar) => {
+    init.signal.addEventListener('abort', () => rechazar(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })));
+  }));
+
+  test('corta la petición al puente para que deje de esperar y la medición termina como cancelada', async () => {
+    // Arrange
+    const simulado = colgada();
+    global.fetch = simulado as unknown as typeof fetch;
+    const sensor = new SensorBasculaPuente(CONFIG);
+    const medicion = sensor.medir().catch((e) => e);
+    await Promise.resolve();
+    const senal = (simulado.mock.calls[0] as unknown as [string, { signal: AbortSignal }])[1].signal;
+    expect(senal.aborted).toBe(false);
+
+    // Act
+    sensor.cancelar();
+    const error = await medicion;
+
+    // Assert: no se confunde con un tiempo agotado ni con un sensor desconectado
+    expect(senal.aborted).toBe(true);
+    expect(error).toBeInstanceOf(ErrorSensor);
+    expect(error).toMatchObject({ codigo: 'error', message: 'Medición cancelada.' });
+  });
+
+  test('sin una medición en curso no hace nada y se puede volver a medir', async () => {
+    // Arrange
+    const sensor = new SensorBasculaPuente(CONFIG);
+
+    // Act / Assert
+    expect(() => sensor.cancelar()).not.toThrow();
+  });
+
+  test('una medición nueva después de cancelar usa una petición nueva sin cancelar', async () => {
+    // Arrange
+    const primera = colgada();
+    global.fetch = primera as unknown as typeof fetch;
+    const sensor = new SensorBasculaPuente(CONFIG);
+    const cancelada = sensor.medir().catch((e) => e);
+    await Promise.resolve();
+    sensor.cancelar();
+    await cancelada;
+    const segunda = colgada();
+    global.fetch = segunda as unknown as typeof fetch;
+
+    // Act
+    const nueva = sensor.medir().catch((e) => e);
+    await Promise.resolve();
+
+    // Assert
+    expect((segunda.mock.calls[0] as unknown as [string, { signal: AbortSignal }])[1].signal.aborted).toBe(false);
+    sensor.cancelar();
+    await nueva;
+  });
+});

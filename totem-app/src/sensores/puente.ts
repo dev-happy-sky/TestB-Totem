@@ -23,23 +23,33 @@ type RespuestaMedicion = {
 };
 
 /** Petición HTTP al puente (oxímetro o báscula) con la clave opcional y un tiempo máximo. */
-export async function pedirAlPuente(config: ConfiguracionPuente, ruta: string, metodo: 'GET' | 'POST', timeoutMs: number): Promise<Response> {
+export async function pedirAlPuente(
+  config: ConfiguracionPuente, ruta: string, metodo: 'GET' | 'POST', timeoutMs: number, cancelacion?: AbortSignal,
+): Promise<Response> {
   const control = new AbortController();
   const temporizador = setTimeout(() => control.abort(), timeoutMs);
+  // Si la persona cancela, se corta la petición: el puente lo nota y deja de esperar la medición.
+  const abortar = () => control.abort();
+  if (cancelacion?.aborted) control.abort();
+  else cancelacion?.addEventListener('abort', abortar);
   const encabezados = { Accept: 'application/json', ...(config.clave ? { 'X-Puente-Key': config.clave } : {}) };
   try {
     return await fetch(`${config.url.replace(/\/$/, '')}${ruta}`, { method: metodo, headers: encabezados, signal: control.signal });
   } finally {
     clearTimeout(temporizador);
+    cancelacion?.removeEventListener('abort', abortar);
   }
 }
 
 /** POST /medir: devuelve el cuerpo de la medición o lanza `ErrorSensor` con los mismos códigos que el backend entiende. */
-export async function medirPorPuente<T>(config: ConfiguracionPuente, timeoutPorDefectoMs: number, nombres: { sensor: string; puente: string }): Promise<T> {
+export async function medirPorPuente<T>(
+  config: ConfiguracionPuente, timeoutPorDefectoMs: number, nombres: { sensor: string; puente: string }, cancelacion?: AbortSignal,
+): Promise<T> {
   let respuesta: Response;
   try {
-    respuesta = await pedirAlPuente(config, '/medir', 'POST', config.timeoutMedicionMs ?? timeoutPorDefectoMs);
+    respuesta = await pedirAlPuente(config, '/medir', 'POST', config.timeoutMedicionMs ?? timeoutPorDefectoMs, cancelacion);
   } catch (error) {
+    if (cancelacion?.aborted) throw new ErrorSensor('error', 'Medición cancelada.');
     if (error instanceof Error && error.name === 'AbortError') {
       throw new ErrorSensor('timeout', `${nombres.sensor} tardó demasiado en responder`);
     }
@@ -61,6 +71,8 @@ export async function medirPorPuente<T>(config: ConfiguracionPuente, timeoutPorD
 }
 
 export class SensorOximetroPuente implements Sensor {
+  private cancelacion: AbortController | null = null;
+
   constructor(public readonly tipo: Extract<TipoSensor, 'oximetro' | 'oximetro_recuperacion'>, private readonly config: ConfiguracionPuente) {}
 
   private pedir(ruta: string, metodo: 'GET' | 'POST', timeoutMs: number): Promise<Response> {
@@ -92,8 +104,15 @@ export class SensorOximetroPuente implements Sensor {
     }
   }
 
+  /** Corta la medición en curso: el puente deja de esperar y queda libre para la siguiente. */
+  cancelar(): void {
+    this.cancelacion?.abort();
+    this.cancelacion = null;
+  }
+
   async medir(): Promise<Lectura> {
-    const medicion = await medirPorPuente<RespuestaMedicion>(this.config, 70000, { sensor: 'El oxímetro', puente: 'el puente del oxímetro' });
+    this.cancelacion = new AbortController();
+    const medicion = await medirPorPuente<RespuestaMedicion>(this.config, 70000, { sensor: 'El oxímetro', puente: 'el puente del oxímetro' }, this.cancelacion.signal);
     const valores = this.tipo === 'oximetro' ? { spo2: medicion.spo2, fcReposo: medicion.fc } : { fcRecup: medicion.fc };
     return { sensor: this.tipo, valores, dispositivo: medicion.dispositivo, capturadoEn: medicion.capturado_en };
   }

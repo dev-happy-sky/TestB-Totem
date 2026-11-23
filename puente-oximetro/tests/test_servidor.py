@@ -8,7 +8,8 @@ from fastapi.testclient import TestClient
 from puente import __main__ as principal
 from puente.captura import Captura
 from puente.protocolo import Muestra
-from puente.servidor import crear_app
+from puente.captura import ErrorMedicion
+from puente.servidor import crear_app, _esperar_con_cliente
 
 
 class Reloj:
@@ -436,3 +437,55 @@ async def test_lectura_no_guarda_nada_en_disco(tmp_path, monkeypatch):
 
     # Assert
     assert list(tmp_path.iterdir()) == []
+
+
+class PeticionFalsa:
+    """Un `Request` cuyo cliente se desconecta tras `consultas` revisiones."""
+    def __init__(self, consultas):
+        self.consultas = consultas
+
+    async def is_disconnected(self):
+        self.consultas -= 1
+        return self.consultas < 0
+
+
+async def test_si_la_app_cierra_la_peticion_deja_de_esperar_y_cancela_la_medicion():
+    # Arrange
+    cancelada = asyncio.Event()
+
+    async def espera_larga():
+        try:
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            cancelada.set()
+            raise
+
+    # Act
+    with pytest.raises(ErrorMedicion) as error:
+        await _esperar_con_cliente(PeticionFalsa(1), espera_larga(), paso_s=0.01)
+
+    # Assert
+    assert error.value.codigo == "error" and cancelada.is_set()
+
+
+async def test_si_la_medicion_termina_antes_entrega_su_resultado():
+    # Arrange
+    async def espera_corta():
+        await asyncio.sleep(0.02)
+        return "medicion"
+
+    # Act / Assert
+    assert await _esperar_con_cliente(PeticionFalsa(100), espera_corta(), paso_s=0.01) == "medicion"
+
+
+async def test_el_error_de_la_medicion_se_propaga_tal_cual():
+    # Arrange
+    async def espera_con_error():
+        raise ErrorMedicion("timeout", "No llegó ninguna medición.")
+
+    # Act
+    with pytest.raises(ErrorMedicion) as error:
+        await _esperar_con_cliente(PeticionFalsa(100), espera_con_error(), paso_s=0.01)
+
+    # Assert
+    assert error.value.codigo == "timeout"
