@@ -386,7 +386,7 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
         const estado = estados[tipo] ?? { tipo: 'pendiente' };
         const etiqueta = ETIQUETA_SENSOR[tipo];
         return (
-          <View key={tipo} style={[estilos.tarjeta, bloqueado && estilos.bloqueada]} accessibilityLabel={`Sensor ${etiqueta}`}
+          <View key={tipo} style={[estilos.tarjeta, pasoAPaso && estilos.tarjetaCentrada, bloqueado && estilos.bloqueada]} accessibilityLabel={`Sensor ${etiqueta}`}
                 accessibilityState={{ disabled: bloqueado }}>
             <Text style={estilos.titulo}>{etiqueta}</Text>
             {bloqueado && <Text style={estilos.candado} accessibilityRole="text">🔒 Primero ingresa tu estatura</Text>}
@@ -540,6 +540,8 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
 const estilos = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   tarjeta: { width: '48%', backgroundColor: '#fff', padding: 20, borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 15 },
+  // En el modo paso a paso se muestra una sola medición: va centrada y con un ancho cómodo, no a medias en la izquierda.
+  tarjetaCentrada: { width: '100%', maxWidth: 560, alignSelf: 'center' },
   titulo: { fontSize: 14, fontWeight: 'bold', color: '#1e293b', marginBottom: 8 },
   instruccion: { fontSize: 12, color: '#64748b', marginBottom: 12, lineHeight: 17 },
   fila: { flexDirection: 'row', flexWrap: 'wrap' },
