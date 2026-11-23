@@ -14,6 +14,8 @@ type RespuestaMedicion = {
 export class SensorBasculaPuente implements Sensor {
   readonly tipo = 'balanza' as const;
 
+  private cancelacion: AbortController | null = null;
+
   constructor(private readonly config: ConfiguracionPuente) {}
 
   /** La báscula duerme hasta que alguien se sube: que el puente esté escuchando basta; el peso se espera al medir. */
@@ -40,9 +42,16 @@ export class SensorBasculaPuente implements Sensor {
     }
   }
 
+  /** Corta la medición en curso: el puente deja de esperar y queda libre para la siguiente. */
+  cancelar(): void {
+    this.cancelacion?.abort();
+    this.cancelacion = null;
+  }
+
   async medir(): Promise<Lectura> {
     // Debe superar el tiempo máximo de espera del puente (30 s por defecto).
-    const medicion = await medirPorPuente<RespuestaMedicion>(this.config, 40000, { sensor: 'La báscula', puente: 'el puente de la báscula' });
+    this.cancelacion = new AbortController();
+    const medicion = await medirPorPuente<RespuestaMedicion>(this.config, 40000, { sensor: 'La báscula', puente: 'el puente de la báscula' }, this.cancelacion.signal);
     return {
       sensor: 'balanza', valores: { peso: medicion.peso_kg.toFixed(1) }, dispositivo: medicion.dispositivo, capturadoEn: medicion.capturado_en,
     };

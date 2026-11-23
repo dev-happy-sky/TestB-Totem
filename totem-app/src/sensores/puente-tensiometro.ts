@@ -14,6 +14,8 @@ type RespuestaMedicion = {
 export class SensorTensiometroPuente implements Sensor {
   readonly tipo = 'tensiometro' as const;
 
+  private cancelacion: AbortController | null = null;
+
   constructor(private readonly config: ConfiguracionPuente) {}
 
   /** El tensiómetro duerme entre mediciones: basta con que el puente esté activo. */
@@ -43,9 +45,16 @@ export class SensorTensiometroPuente implements Sensor {
     }
   }
 
+  /** Corta la medición en curso: el puente deja de esperar (y no queda «ocupado» hasta agotar sus 2 minutos). */
+  cancelar(): void {
+    this.cancelacion?.abort();
+    this.cancelacion = null;
+  }
+
   async medir(): Promise<Lectura> {
     // Debe superar el tiempo máximo de espera del puente (120 s por defecto).
-    const medicion = await medirPorPuente<RespuestaMedicion>(this.config, 140000, { sensor: 'El tensiómetro', puente: 'el puente del tensiómetro' });
+    this.cancelacion = new AbortController();
+    const medicion = await medirPorPuente<RespuestaMedicion>(this.config, 140000, { sensor: 'El tensiómetro', puente: 'el puente del tensiómetro' }, this.cancelacion.signal);
     return {
       sensor: 'tensiometro', valores: { presionSys: medicion.sistolica, presionDia: medicion.diastolica },
       dispositivo: medicion.dispositivo, capturadoEn: medicion.capturado_en,

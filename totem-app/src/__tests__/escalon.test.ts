@@ -369,3 +369,17 @@ describe('SensorEscalon', () => {
     expect(segundo.valores.vo2Max).toBe('40.0');   // 65,81 − 0,1847 × 140 = 39,95
   });
 });
+
+describe('SensorEscalon.cancelar y el oxímetro', () => {
+  test('al cancelar también cancela la medición del pulso en el oxímetro', () => {
+    // Arrange
+    const oximetro = { ...oximetroFalso(), cancelar: jest.fn() };
+    const sensor = new SensorEscalon(oximetro);
+
+    // Act
+    sensor.cancelar();
+
+    // Assert
+    expect(oximetro.cancelar).toHaveBeenCalledTimes(1);
+  });
+});

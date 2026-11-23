@@ -9,7 +9,7 @@ import hmac
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -66,14 +66,14 @@ def crear_app(lector, token: Optional[str] = None, origenes: Optional[list] = No
                 "indice_perfusion": muestra.indice_perfusion, "motivo": None}
 
     @app.post("/medir", dependencies=[Depends(verificar)])
-    async def medir():
+    async def medir(request: Request):
         if not lector.conectado:
             return _error(ErrorMedicion("desconectado", "El oxímetro no está conectado. Enciéndelo y acércalo al tótem."))
         if bloqueo.locked():
             return _error(ErrorMedicion("error", "Ya hay una medición en curso."), 409)
         async with bloqueo:
             try:
-                medicion = await esperar_medicion(lector.captura, reloj, dormir, timeout_s)
+                medicion = await _esperar_con_cliente(request, esperar_medicion(lector.captura, reloj, dormir, timeout_s))
             except ErrorMedicion as error:
                 return _error(error)
         return {
@@ -84,6 +84,23 @@ def crear_app(lector, token: Optional[str] = None, origenes: Optional[list] = No
         }
 
     return app
+
+
+async def _esperar_con_cliente(request: Request, espera, paso_s: float = 0.25):
+    """Corre `espera` (una corrutina) mientras la app siga esperando la respuesta. Si la app cancela (cierra la petición), deja de
+    esperar y libera el puente: sin esto, una medición cancelada seguiría ocupándolo hasta agotar su tiempo máximo."""
+    tarea = asyncio.ensure_future(espera)
+    try:
+        while True:
+            hechas, _ = await asyncio.wait({tarea}, timeout=paso_s)
+            if hechas:
+                return tarea.result()
+            if await request.is_disconnected():
+                raise ErrorMedicion("error", "Medición cancelada por la app.")
+    finally:
+        if not tarea.done():
+            tarea.cancel()
+            await asyncio.gather(tarea, return_exceptions=True)
 
 
 def _error(error: ErrorMedicion, estado: Optional[int] = None) -> JSONResponse:

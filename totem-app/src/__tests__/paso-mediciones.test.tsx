@@ -1239,3 +1239,22 @@ describe('tensiómetro: estado en vivo', () => {
     expect(await screen.findByText('Puente del tensiómetro no disponible')).toBeTruthy();
   });
 });
+
+describe('cancelar una medición automática', () => {
+  test('"Cancelar medición" también le pide al sensor que corte la medición, no solo cierra el cuadro', async () => {
+    // Arrange
+    const sensores = crearSensoresSimulados({ latenciaMs: 0 });
+    const cancelar = jest.fn();
+    const colgada: Sensor = { tipo: 'tensiometro', disponible: async () => true, medir: () => new Promise<Lectura>(() => {}), cancelar };
+    await montar({ ...sensores, tensiometro: colgada });
+    fireEvent.press(screen.getByLabelText('Medir Tensiómetro'));
+    await screen.findByText('Esperando la medición: pulsa Start en el tensiómetro…');
+    cancelar.mockClear();
+
+    // Act
+    await fireEvent.press(screen.getByLabelText('Cancelar la medición de Tensiómetro'));
+
+    // Assert
+    expect(cancelar).toHaveBeenCalledTimes(1);
+  });
+});

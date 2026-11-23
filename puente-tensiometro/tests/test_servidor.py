@@ -7,7 +7,8 @@ import pytest
 from puente import __main__ as principal
 from puente.captura import Captura
 from puente.protocolo import Muestra
-from puente.servidor import crear_app
+from puente.captura import ErrorMedicion
+from puente.servidor import crear_app, _esperar_con_cliente
 
 
 class Reloj:
@@ -224,3 +225,92 @@ def test_fuera_de_localhost_exige_token(monkeypatch, capsys):
 
     # Assert
     assert codigo == 1 and "PUENTE_TOKEN" in capsys.readouterr().err
+
+
+class PeticionFalsa:
+    """Un `Request` cuyo cliente se desconecta tras `consultas` revisiones."""
+    def __init__(self, consultas):
+        self.consultas = consultas
+
+    async def is_disconnected(self):
+        self.consultas -= 1
+        return self.consultas < 0
+
+
+async def test_si_la_app_cierra_la_peticion_deja_de_esperar_y_cancela_la_medicion():
+    # Arrange
+    cancelada = asyncio.Event()
+
+    async def espera_larga():
+        try:
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            cancelada.set()
+            raise
+
+    # Act
+    with pytest.raises(ErrorMedicion) as error:
+        await _esperar_con_cliente(PeticionFalsa(1), espera_larga(), paso_s=0.01)
+
+    # Assert
+    assert error.value.codigo == "error" and cancelada.is_set()
+
+
+async def test_si_la_medicion_termina_antes_entrega_su_resultado():
+    # Arrange
+    async def espera_corta():
+        await asyncio.sleep(0.02)
+        return "medicion"
+
+    # Act / Assert
+    assert await _esperar_con_cliente(PeticionFalsa(100), espera_corta(), paso_s=0.01) == "medicion"
+
+
+async def test_el_error_de_la_medicion_se_propaga_tal_cual():
+    # Arrange
+    async def espera_con_error():
+        raise ErrorMedicion("timeout", "No llegó ninguna medición.")
+
+    # Act
+    with pytest.raises(ErrorMedicion) as error:
+        await _esperar_con_cliente(PeticionFalsa(100), espera_con_error(), paso_s=0.01)
+
+    # Assert
+    assert error.value.codigo == "timeout"
+
+
+async def test_una_medicion_cancelada_por_la_app_libera_el_puente_para_la_siguiente():
+    # Arrange: el puente espera en tiempo real una medición que no llega; la app cierra la petición a los 0,15 s (el tiempo máximo es 1 s)
+    import time
+    lector = LectorFalso()
+    app = crear_app(lector, timeout_s=1, reloj=time.monotonic, dormir=asyncio.sleep)
+    cierra = asyncio.Event()
+    cuerpo_enviado = False
+
+    async def receive():
+        nonlocal cuerpo_enviado
+        if not cuerpo_enviado:
+            cuerpo_enviado = True
+            return {"type": "http.request", "body": b"", "more_body": False}
+        await cierra.wait()
+        return {"type": "http.disconnect"}
+
+    enviados = []
+
+    async def send(mensaje):
+        enviados.append(mensaje)
+
+    alcance = {"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "POST", "scheme": "http", "path": "/medir",
+               "raw_path": b"/medir", "query_string": b"", "headers": [], "client": ("127.0.0.1", 5000), "server": ("127.0.0.1", 8767)}
+    asyncio.get_running_loop().call_later(0.15, cierra.set)
+
+    # Act
+    inicio = time.monotonic()
+    await asyncio.wait_for(app(alcance, receive, send), timeout=5)
+    duracion = time.monotonic() - inicio
+    async with cliente(app) as http:
+        siguiente = await http.post("/medir")
+
+    # Assert: la siguiente medición se atiende (llega al tiempo máximo) en vez de recibir «ya hay una medición en curso» (409)
+    assert duracion < 0.7   # terminó al cerrar la app, sin esperar el tiempo máximo
+    assert siguiente.status_code == 504

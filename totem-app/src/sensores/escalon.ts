@@ -102,6 +102,7 @@ export class SensorEscalon implements Sensor {
   cancelar(): void {
     this.numero += 1;
     this.progresoActual = null;
+    this.recuperacion.cancelar?.();   // si ya estaba midiendo el pulso, también se corta esa petición al oxímetro
   }
 
   async medir(): Promise<Lectura> {
