@@ -75,7 +75,7 @@ export default function TarjetaEstatura({ estaturaCm, onEstatura, anchoCompleto 
 
 const estilos = StyleSheet.create({
   tarjeta: { width: '48%', backgroundColor: '#fff', padding: 20, borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 15 },
-  anchoCompleto: { width: '100%' },
+  anchoCompleto: { width: '100%', maxWidth: 560, alignSelf: 'center' },   // misma anchura y centrado que las tarjetas de los sensores
   titulo: { fontSize: 14, fontWeight: 'bold', color: '#1e293b', marginBottom: 8 },
   instruccion: { fontSize: 12, color: '#64748b', marginBottom: 12, lineHeight: 17 },
   fila: { flexDirection: 'row', flexWrap: 'wrap' },
