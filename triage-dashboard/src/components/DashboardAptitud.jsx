@@ -8,6 +8,7 @@ import BarraImc from './BarraImc';
 import { ETIQUETA_SEVERIDAD, coincidenciaIA, nivelConfianza, nombreCategoria, porcentajeConfianza } from '../lib/ia';
 import { hayCalibracionVencida, resumirDispositivos, resumirErrores } from '../lib/mediciones';
 import { describirContacto, etiquetaDias, horaLocal } from '../lib/formato';
+import { nivelPresion } from '../lib/presion';
 import { FILTROS, alertaPendiente, describirOrigen, duracionEvaluacion, estadoRevision, filtrarCola, filtrarCondicion, ordenarCola } from '../lib/cola';
 import { IconoCorazon, IconoPulso, IconoGota, IconoBalanza, IconoRegla, IconoPersona, IconoPesa, IconoRayo, IconoReloj, IconoCheck, IconoAlerta, IconoCampana, IconoDiana } from './iconos';
 
@@ -139,11 +140,11 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout, s
 
   const obtenerColorMetrica = (tipo, valor1, valor2 = 0) => {
     if (!valor1 || valor1 === '--') return 'text-slate-800';
+    if (tipo === 'presion') return nivelPresion(valor1, valor2)?.color ?? 'text-slate-800';
     const v1 = parseFloat(valor1);
     const v2 = parseFloat(valor2);
     let esAnormal = false;
     switch(tipo) {
-      case 'presion': esAnormal = v1 >= 130 || v1 < 90 || v2 >= 85 || v2 < 60; break;
       case 'fc': esAnormal = v1 > 100 || v1 < 60; break;
       case 'imc': esAnormal = v1 >= 25.0 || v1 < 18.5; break;
     }
@@ -413,7 +414,7 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout, s
                 )}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {[
-                    { et: 'PA', val: `${med.presionSys || '--'}/${med.presionDia || '--'}`, u: 'mmHg', color: obtenerColorMetrica('presion', med.presionSys, med.presionDia), icon: <IconoCorazon className="w-5 h-5" />, chip: 'bg-red-50 text-red-500' },
+                    { et: 'PA', val: `${med.presionSys || '--'}/${med.presionDia || '--'}`, u: 'mmHg', nivel: nivelPresion(med.presionSys, med.presionDia), color: obtenerColorMetrica('presion', med.presionSys, med.presionDia), icon: <IconoCorazon className="w-5 h-5" />, chip: 'bg-red-50 text-red-500' },
                     { et: 'FC REPOSO', val: med.fcReposo || '--', u: 'lpm', color: obtenerColorMetrica('fc', med.fcReposo), icon: <IconoPulso className="w-5 h-5" />, chip: 'bg-red-50 text-red-500' },
                     { et: 'FC RECUP.', val: med.fcRecup || '--', u: 'lpm', color: 'text-slate-800', icon: <IconoPulso className="w-5 h-5" />, chip: 'bg-red-50 text-red-500' },
                     { et: 'SpO₂', val: med.spo2 ?? '--', u: '%', color: med.spo2 != null && med.spo2 < 95 ? 'text-red-600' : 'text-slate-800', icon: <IconoGota className="w-5 h-5" />, chip: 'bg-sky-50 text-sky-500' },
@@ -430,6 +431,7 @@ export default function DashboardAptitud({ sesion, onSesionInvalida, onLogout, s
                         <span className="text-[10px] font-bold text-slate-400 block leading-tight">{x.et}</span>
                         <span className={`text-lg font-bold ${x.color}`}>{x.val}</span>
                         <span className="text-[11px] text-slate-400 ml-1">{x.u}</span>
+                        {x.nivel && <span className={`block mt-0.5 w-fit text-[10px] font-bold px-1.5 py-0.5 rounded ${x.nivel.chip}`}>{x.nivel.texto}</span>}
                       </div>
                     </div>
                   ))}

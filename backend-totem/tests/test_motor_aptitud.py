@@ -95,14 +95,16 @@ def test_una_configuracion_incoherente_se_rechaza(rompe, mensaje):
 # ----------------------------------------------------------------- límites de los signos vitales
 
 @pytest.mark.parametrize("campo, valor, esperado", [
-    # presión sistólica: precaución si <90 o >=130; crítico si <80 o >=180
-    ("presion_sistolica", 90, None), ("presion_sistolica", 129, None),
-    ("presion_sistolica", 89, "PRESION_SISTOLICA_FUERA_DE_RANGO"), ("presion_sistolica", 130, "PRESION_SISTOLICA_FUERA_DE_RANGO"),
-    ("presion_sistolica", 80, "PRESION_SISTOLICA_FUERA_DE_RANGO"), ("presion_sistolica", 179, "PRESION_SISTOLICA_FUERA_DE_RANGO"),
-    ("presion_sistolica", 79, "PRESION_SISTOLICA_CRITICA"), ("presion_sistolica", 180, "PRESION_SISTOLICA_CRITICA"),
-    # presión diastólica: precaución si <60 o >=85; crítico si <50 o >=120 (la sistólica se mantiene mayor)
-    ("presion_diastolica", 60, None), ("presion_diastolica", 84, None),
-    ("presion_diastolica", 59, "PRESION_DIASTOLICA_FUERA_DE_RANGO"), ("presion_diastolica", 85, "PRESION_DIASTOLICA_FUERA_DE_RANGO"),
+# presión sistólica (AHA): leve desde 120; precaución si <90 o >=140; crítico si <80 o >=181
+    ("presion_sistolica", 90, None), ("presion_sistolica", 119, None),
+    ("presion_sistolica", 120, "PRESION_SISTOLICA_LIGERAMENTE_ELEVADA"), ("presion_sistolica", 139, "PRESION_SISTOLICA_LIGERAMENTE_ELEVADA"),
+    ("presion_sistolica", 89, "PRESION_SISTOLICA_FUERA_DE_RANGO"), ("presion_sistolica", 140, "PRESION_SISTOLICA_FUERA_DE_RANGO"),
+    ("presion_sistolica", 80, "PRESION_SISTOLICA_FUERA_DE_RANGO"), ("presion_sistolica", 180, "PRESION_SISTOLICA_FUERA_DE_RANGO"),
+    ("presion_sistolica", 79, "PRESION_SISTOLICA_CRITICA"), ("presion_sistolica", 181, "PRESION_SISTOLICA_CRITICA"),
+    # presión diastólica (AHA): leve desde 80; precaución si <60 o >=90; crítico si <50 o >=121
+    ("presion_diastolica", 60, None), ("presion_diastolica", 79, None),
+    ("presion_diastolica", 80, "PRESION_DIASTOLICA_LIGERAMENTE_ELEVADA"), ("presion_diastolica", 89, "PRESION_DIASTOLICA_LIGERAMENTE_ELEVADA"),
+    ("presion_diastolica", 59, "PRESION_DIASTOLICA_FUERA_DE_RANGO"), ("presion_diastolica", 90, "PRESION_DIASTOLICA_FUERA_DE_RANGO"),
     ("presion_diastolica", 49, "PRESION_DIASTOLICA_CRITICA"),
     # frecuencia cardíaca: precaución si >100 o <60; crítico si >120 o <40
     ("fc_reposo", 60, None), ("fc_reposo", 100, None),
@@ -167,14 +169,15 @@ def test_una_sistolica_menor_o_igual_que_la_diastolica_invalida_ambas_presiones(
     ({"lesiones_previas": "Esguince de tobillo"}, "A3", None, None),
     ({"lesiones_previas": "   "}, "A4", None, None),                                                 # solo espacios
     ({"imc": 27}, "A2", None, None),                                                                 # IMC: precaución sin alerta
-    ({"presion_sistolica": 135}, "A2", "DERIVAR", "riesgo"),
     ({"fc_reposo": 105}, "A2", "DERIVAR", "riesgo"),
     ({"sintomas": ("Medicación permanente",)}, "A2", "DERIVAR", "riesgo"),
     ({"sintomas": ("Mareos",)}, "A2", "DERIVAR", "riesgo"),
     ({"sintomas": ("Dolor de pecho al esforzarte",)}, "A1", "DERIVAR", "critica"),
     ({"sintomas": ("Mareos o pérdida de equilibrio",)}, "A1", "DERIVAR", "critica"),
     ({"condiciones": ("Problema cardíaco",)}, "A1", "DERIVAR", "critica"),
-    ({"presion_sistolica": 185, "presion_diastolica": 100}, "A1", "DERIVAR", "critica"),
+    ({"presion_sistolica": 125}, "A3", None, None),                                                  # elevada: leve
+    ({"presion_sistolica": 135}, "A3", None, None),                                                  # etapa 1: leve
+    ({"presion_sistolica": 145}, "A2", "DERIVAR", "riesgo"),                                         # etapa 2: precaución con alerta
     ({"fc_reposo": 130}, "A1", "DERIVAR", "critica"),
     ({"fc_reposo": 35}, "A1", "DERIVAR", "critica"),
     ({"sintomas": ("Medicación permanente",), "condiciones": ("Problema cardíaco",)}, "A1", "DERIVAR", "critica"),
@@ -241,8 +244,9 @@ def test_los_factores_listan_todo_lo_que_pesó_en_la_decision():
 
     # Assert
     assert resultado.factores == (
+        "Presión arterial (AHA): Hipertensión etapa 1",
         "Síntoma declarado: Medicación permanente", "Condición declarada: Asma", "Condición crítica: Problema cardíaco",
-        "Lesiones previas declaradas", "Presión sistólica 135 mmHg: fuera del rango normal", "IMC 27 kg/m²: fuera del rango normal",
+        "Lesiones previas declaradas", "Presión sistólica 135 mmHg: ligeramente elevada", "IMC 27 kg/m²: fuera del rango normal",
     )
 
 
@@ -441,3 +445,23 @@ def test_si_el_modelo_dice_a1_sin_alerta_critica_de_las_reglas_se_deriva():
 
     # Assert
     assert final.categoria == "A1" and (final.alerta, final.nivel_alerta) == ("DERIVAR", "riesgo")
+
+@pytest.mark.parametrize("sis, dia, esperado", [
+    (118, 76, "Presión normal"), (125, 75, "Presión elevada"), (121, 81, "Hipertensión etapa 1"),
+    (135, 82, "Hipertensión etapa 1"), (145, 92, "Hipertensión etapa 2"), (185, 110, "Hipertensión grave"),
+    (85, 55, "Presión baja"),
+])
+
+def test_categoria_presion_aha(sis, dia, esperado):
+    from motor_aptitud import categoria_presion_aha
+    assert categoria_presion_aha(sis, dia) == esperado
+
+
+def test_presion_muy_alta_con_sintoma_critico_es_emergencia():
+    resultado = evaluar(entrada(presion_sistolica=185, presion_diastolica=100, sintomas=("Dolor de pecho al esforzarte",)), CFG)
+    assert "EMERGENCIA_HIPERTENSIVA" in ids(resultado)
+
+
+def test_presion_muy_baja_con_sintoma_critico_no_es_emergencia_hipertensiva():
+    resultado = evaluar(entrada(presion_sistolica=75, presion_diastolica=45, sintomas=("Dolor de pecho al esforzarte",)), CFG)
+    assert "EMERGENCIA_HIPERTENSIVA" not in ids(resultado)

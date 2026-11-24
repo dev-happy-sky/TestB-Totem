@@ -35,15 +35,36 @@ const COLOR_ALERTA = '#ef4444';
 const anormal = (clave: keyof ValoresMedidos, valores: ValoresMedidos): boolean => {
   const v = Number(valores[clave]);
   switch (clave) {
-    case 'presionSys': case 'presionDia': {
-      const { presionSys: sys = 0, presionDia: dia = 0 } = valores;
-      return sys >= 130 || sys < 90 || dia >= 85 || dia < 60;
-    }
     case 'fcReposo': return v > 100 || v < 60;
     case 'spo2': return v < 95;
     case 'imc': return v >= 25 || v < 18.5;
     default: return false;
   }
+};
+
+// Categorías de presión arterial de la American Heart Association (2025). Debe coincidir con el motor de reglas del backend
+// (backend-totem/motor_aptitud.py y reglas_aptitud.json).
+// En el tótem la categoría se muestra solo como COLOR (para no preocupar al usuario); el texto queda para el dashboard del encargado
+// y para los lectores de pantalla. `grave` activa un aviso neutro para que la persona hable con el encargado.
+type NivelPresion = { texto: string; color: string; grave?: boolean };
+
+const nivelPresion = (sisCrudo: unknown, diaCrudo: unknown): NivelPresion | null => {
+  const sis = Number(sisCrudo);
+  const dia = Number(diaCrudo);
+  if (!Number.isFinite(sis) || !Number.isFinite(dia)) return null;
+  if (sis > 180 || dia > 120) return { texto: 'Hipertensión grave', color: '#7f1d1d', grave: true };
+  if (sis >= 140 || dia >= 90) return { texto: 'Hipertensión etapa 2', color: '#b91c1c' };
+  if (sis >= 130 || dia >= 80) return { texto: 'Hipertensión etapa 1', color: '#c2410c' };
+  if (sis >= 120) return { texto: 'Presión elevada', color: '#a16207' };
+  if (sis < 90 || dia < 60) return { texto: 'Presión baja', color: '#1d4ed8' };
+  return { texto: 'Presión normal', color: '#15803d' };
+};
+
+const colorDe = (clave: keyof ValoresMedidos, valores: ValoresMedidos): string => {
+  if (clave === 'presionSys' || clave === 'presionDia') {
+    return nivelPresion(valores.presionSys, valores.presionDia)?.color ?? COLOR_NORMAL;
+  }
+  return anormal(clave, valores) ? COLOR_ALERTA : COLOR_NORMAL;
 };
 
 type Campo = { clave: keyof ValoresMedidos; etiqueta: string; unidad: string; decimal?: boolean };
@@ -385,6 +406,10 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
         const lectura = lecturas[tipo];
         const estado = estados[tipo] ?? { tipo: 'pendiente' };
         const etiqueta = ETIQUETA_SENSOR[tipo];
+        // Categoría de la presión: se pinta solo como color; el texto va únicamente en la etiqueta de accesibilidad.
+        const nivelTension = tipo === 'tensiometro' && lectura
+          ? nivelPresion(lectura.valores.presionSys, lectura.valores.presionDia)
+          : null;
         return (
           <View key={tipo} style={[estilos.tarjeta, pasoAPaso && estilos.tarjetaCentrada, bloqueado && estilos.bloqueada]} accessibilityLabel={`Sensor ${etiqueta}`}
                 accessibilityState={{ disabled: bloqueado }}>
@@ -398,17 +423,25 @@ export default function PasoMediciones({ sensores, lecturas, onLectura, onError,
                 const esImcBalanza = tipo === 'balanza' && campo.clave === 'imc';
                 const valor = esImcBalanza && imcBarra != null ? imcBarra.toFixed(1) : lectura?.valores[campo.clave];
                 const valoresColor = esImcBalanza && imcBarra != null ? { imc: imcBarra.toFixed(1) } : lectura?.valores;
-                const color = valoresColor && anormal(campo.clave, valoresColor) ? COLOR_ALERTA : COLOR_NORMAL;
+                const color = valoresColor ? colorDe(campo.clave, valoresColor) : COLOR_NORMAL;
+                const esPresion = campo.clave === 'presionSys' || campo.clave === 'presionDia';
+                const etiquetaAcc = `${campo.etiqueta} ${valor === undefined ? 'sin medir' : `${valor} ${campo.unidad}`}`
+                  + (esPresion && nivelTension ? `. ${nivelTension.texto}` : '');
                 return (
                   <View key={campo.clave} style={estilos.campo}>
                     <Text style={estilos.etiqueta}>{campo.etiqueta}</Text>
-                    <Text style={[estilos.metrica, { color }]}>
+                    <Text style={[estilos.metrica, { color }]} accessibilityLabel={etiquetaAcc}>
                       {valor === undefined ? '--' : valor} <Text style={estilos.unidad}>{campo.unidad}</Text>
                     </Text>
                   </View>
                 );
               })}
             </View>
+
+            {/* Único aviso de texto: solo en presión grave, en tono neutro. El resto de las categorías se muestran solo con color. */}
+            {nivelTension?.grave && (
+              <Text style={estilos.error} accessibilityRole="alert">Avisa al encargado antes de continuar.</Text>
+            )}
 
             {pasoAPaso && tipo === 'balanza' && <BarraIMC imc={imcBarra} />}
 

@@ -16,19 +16,23 @@
   },
 
   "signos_vitales": {
-    "presion_sistolica": {
+      "presion_sistolica": {
       "etiqueta": "Presión sistólica", "unidad": "mmHg",
+      "nota": "AHA 2025: leve desde 120 (elevada y etapa 1), precaución con alerta desde 140 (etapa 2), crítico sobre 180. Los límites bajos se mantienen de la versión anterior.",
       "validos": {"min": 50, "max": 300},
-      "precaucion_si": {"menor_que": 90, "mayor_o_igual_que": 130},
-      "critico_si": {"menor_que": 80, "mayor_o_igual_que": 180},
-      "genera_alerta": true
+      "leve_si": {"mayor_o_igual_que": 120},
+      "precaucion_si": {"menor_que": 90, "mayor_o_igual_que": 140},
+      "alerta_si": {"menor_que": 90, "mayor_o_igual_que": 140},
+      "critico_si": {"menor_que": 80, "mayor_o_igual_que": 181}
     },
     "presion_diastolica": {
       "etiqueta": "Presión diastólica", "unidad": "mmHg",
+      "nota": "AHA 2025: leve desde 80 (etapa 1), precaución con alerta desde 90 (etapa 2), crítico sobre 120. Los límites bajos se mantienen de la versión anterior.",
       "validos": {"min": 30, "max": 200},
-      "precaucion_si": {"menor_que": 60, "mayor_o_igual_que": 85},
-      "critico_si": {"menor_que": 50, "mayor_o_igual_que": 120},
-      "genera_alerta": true
+      "leve_si": {"mayor_o_igual_que": 80},
+      "precaucion_si": {"menor_que": 60, "mayor_o_igual_que": 90},
+      "alerta_si": {"menor_que": 60, "mayor_o_igual_que": 90},
+      "critico_si": {"menor_que": 50, "mayor_o_igual_que": 121}
     },
     "fc_reposo": {
       "etiqueta": "Frecuencia cardíaca en reposo", "unidad": "lpm",

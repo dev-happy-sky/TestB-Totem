@@ -99,11 +99,15 @@ def validar_configuracion(cfg: dict) -> dict:
 
 def _validar_umbrales(clave: str, vital: dict):
     precaucion, critico = vital.get("precaucion_si", {}), vital.get("critico_si", {})
+    leve = vital.get("leve_si", {})
     _exigir(isinstance(precaucion, dict) and isinstance(critico, dict), f"'{clave}': faltan los umbrales")
     if "menor_que" in critico and "menor_que" in precaucion:
         _exigir(critico["menor_que"] <= precaucion["menor_que"], f"'{clave}': el umbral crítico bajo debe ser <= al de precaución")
     if "mayor_o_igual_que" in critico and "mayor_o_igual_que" in precaucion:
         _exigir(critico["mayor_o_igual_que"] >= precaucion["mayor_o_igual_que"], f"'{clave}': el umbral crítico alto debe ser >= al de precaución")
+    if "mayor_o_igual_que" in leve and "mayor_o_igual_que" in precaucion:
+        _exigir(leve["mayor_o_igual_que"] <= precaucion["mayor_o_igual_que"], f"'{clave}': 'leve_si' debe ser <= 'precaucion_si'")
+    
 
 
 def cargar_configuracion(ruta=None) -> dict:
@@ -153,8 +157,12 @@ def _hallazgos_vitales(valores: dict, cfg: dict) -> list:
         if vital["critico_si"] and _fuera_de(valor, vital["critico_si"]):
             hallazgos.append(Hallazgo(f"{clave.upper()}_CRITICA", f"{texto}: en rango crítico", "critico", True, valor))
         elif _fuera_de(valor, vital["precaucion_si"]):
-            hallazgos.append(Hallazgo(f"{clave.upper()}_FUERA_DE_RANGO", f"{texto}: fuera del rango normal", "precaucion",
-                                      bool(vital.get("genera_alerta")), valor))
+            alerta = bool(vital.get("genera_alerta")) or _fuera_de(valor, vital.get("alerta_si", {}))
+            hallazgos.append(Hallazgo(f"{clave.upper()}_FUERA_DE_RANGO", f"{texto}: fuera del rango normal",
+                                      "precaucion", alerta, valor))
+        elif _fuera_de(valor, vital.get("leve_si", {})):
+            hallazgos.append(Hallazgo(f"{clave.upper()}_LIGERAMENTE_ELEVADA", f"{texto}: ligeramente elevada",
+                                      "leve", False, valor))
     return hallazgos
 
 
@@ -189,6 +197,35 @@ def _inconsistencias(entrada: Entrada, valores: dict, cfg: dict) -> list:
         problemas.append("La FC de recuperación es menor que la FC en reposo")
     return problemas
 
+def categoria_presion_aha(sistolica, diastolica) -> Optional[str]:
+    if sistolica is None or diastolica is None:
+        return None
+    if sistolica > 180 or diastolica > 120:
+        return "Hipertensión grave"
+    if sistolica >= 140 or diastolica >= 90:
+        return "Hipertensión etapa 2"
+    if sistolica >= 130 or diastolica >= 80:
+        return "Hipertensión etapa 1"
+    if sistolica >= 120:
+        return "Presión elevada"
+    if sistolica < 90 or diastolica < 60:
+        return "Presión baja"
+    return "Presión normal"
+
+
+def _hallazgo_emergencia(entrada: Entrada, hallazgos: list, cfg: dict) -> list:
+    """Presión >180/120 con síntomas: emergencia hipertensiva."""
+    presion_critica = any(
+        (h.id == "PRESION_SISTOLICA_CRITICA" and h.valor > 180)
+        or (h.id == "PRESION_DIASTOLICA_CRITICA" and h.valor > 120)
+        for h in hallazgos
+    )
+    con_sintomas = any(s in cfg["cuestionario"]["sintomas_criticos"] for s in entrada.sintomas)
+    if presion_critica and con_sintomas:
+        return [Hallazgo("EMERGENCIA_HIPERTENSIVA",
+                         "Posible emergencia hipertensiva: presión muy alta con síntomas. Llamar a emergencias (131)",
+                         "critico", True)]
+    return []
 
 # ------------------------------------------------------------------------------------ confianza y decisión
 
@@ -234,10 +271,14 @@ def _factores(hallazgos: list, faltantes: list, invalidos: list, inconsistencias
 def evaluar(entrada: Entrada, cfg: dict) -> Resultado:
     valores, faltantes, invalidos = _prepara_vitales(entrada, cfg)
     hallazgos = _hallazgos_cuestionario(entrada, cfg) + _hallazgos_vitales(valores, cfg)
+    hallazgos += _hallazgo_emergencia(entrada, hallazgos, cfg)
     inconsistencias = _inconsistencias(entrada, valores, cfg)
     vencidos = tuple(sorted(set(entrada.calibracion_vencida)))
     confianza = _confianza(faltantes, invalidos, inconsistencias, vencidos, cfg)
     factores = _factores(hallazgos, faltantes, invalidos, inconsistencias, vencidos, cfg)
+    cat_aha = categoria_presion_aha(valores.get("presion_sistolica"), valores.get("presion_diastolica"))  
+    if cat_aha and cat_aha != "Presión normal":
+        factores = (f"Presión arterial (AHA): {cat_aha}",) + factores
 
     gravedad = max((GRAVEDAD[h.severidad] for h in hallazgos), default=0)
     categoria = CATEGORIA_POR_GRAVEDAD[gravedad]
